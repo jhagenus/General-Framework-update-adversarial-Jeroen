@@ -1,0 +1,73 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+python_packages/
+
+HRI_presentation.py
+
+# ignore raw data files
+*.pkl
+*.csv
+*.txt
+*.tfw
+*.tif
+*.tsv
+!requirements.txt
+*.log
+*.npy
+*.dill
+*.feather
+*.zip
+*.xlsx
+*.docx
+*.json
+*.xml
+*.tar
+*.tar.part
+*.pcd.bin
+!nuScenes.json
+!nuScenes_state_delta.json
+!pedestrians.json
+
+# ignore tempory files
+*.tmp
+
+# ignore pictures
+*.png
+*.jpg
+*.pcd
+*.xcf
+*.pb
+*.tfrecords
+
+rndSeed*
+
+# C extensions
+*.so
+*.m
+
+# ignore visualization tools
+!header.tex
+*.aux
+*.gz
+*.out
+rename_files.py
+remove_files.py
+Results/
+*.zarr/
+Data_sets/NuScenes/v1.0-mini/
+simulations*.py
+Framework/Data_sets/Waymo/data/*/uncomp*
+Framework/Data_sets/Lyft/data/.unified_data_cache/
+Framework/experiments
+Framework/Models/*GP*
+Framework/Data_sets/*multiModal*
+Processing/
+processing.py
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+
