@@ -78,13 +78,7 @@ class perturbation_template():
         
         mask_values = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.1
 
-        X = X[~mask_values]
-        Y = Y[~mask_values]
-        T = T[~mask_values]
-        N_O = N_O[~mask_values]
-        Domain = Domain[~mask_values]
-        Input_path = Input_path[~mask_values]
-        Output_path = Output_path[~mask_values]
+    
 
         sorted_indices = np.argsort(-N_O)
 

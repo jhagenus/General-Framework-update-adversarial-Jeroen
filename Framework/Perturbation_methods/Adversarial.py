@@ -132,13 +132,32 @@ class Adversarial(perturbation_template):
 
         torch.autograd.set_detect_anomaly(True)
 
+
         # Remove nan values
         Y_shape = Y.shape
         max_length = np.min(np.sum(~np.isnan(Y[:,:,:,0]), axis=2)[:,0])
         Y = Y[:,:,:max_length,:]
 
+        # Check edge case scenarios that are standing still
+        mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.1
+        mask_values_Y = np.abs(Y[:,1,0,0]-Y[:,1,-1,0]) < 0.1
+        
+        plot_input = False
+        
+        if plot_input:
+            for i in range(X.shape[0]):
+                plt.figure()
+                plt.plot(X[i,0,:,0], X[i,0,:,1], marker='o', linestyle='-', color='b', label='Past original adverserial')
+                plt.plot(X[i,1,:,0], X[i,1,:,1], marker='o', linestyle='-', color='g',label='Past original other')
+                plt.plot(Y[i,0,:,0], Y[i,0,:,1], marker='o', linestyle='-', color='r', label='Past perturbed adverserial')
+                plt.plot(Y[i,1,:,0], Y[i,1,:,1], marker='o', linestyle='-', color='c', label='Future adversarial predict')
+                
+                plt.axis('equal')
+                plt.legend()
+                plt.show()
+
         # Change ego and tar vehicle
-        flip_dimensions = False
+        flip_dimensions = True
 
         i_agent_perturbed = np.where(agent == 'tar')[0][0]
         i_agent_collision = np.where(agent == 'ego')[0][0]
@@ -162,6 +181,21 @@ class Adversarial(perturbation_template):
 
         if flip_dimensions:
             for batch_idx in range(X.shape[0]):
+                if mask_values_X[batch_idx] == True:
+                    if spline_X_Y:
+                        if mask_values_Y[batch_idx] == False:
+                            Spline_input_values[batch_idx,0,1,:] = Spline_input_values[batch_idx,0,X.shape[2],:]
+                            Spline_input_values[batch_idx,0,2:2+Y.shape[2],:] = Spline_input_values[batch_idx,0,X.shape[2]:,:]
+                            Spline_input_values[batch_idx, 0, 2+Y.shape[2]:,:] = np.nan
+
+                    if spline_X_Y == False or (mask_values_Y[batch_idx] == True and spline_X_Y == True):
+                        for i in reversed(range(Spline_input_values.shape[2])):
+                            if Spline_input_values[batch_idx, 0, i, 0] < Spline_input_values[batch_idx, 0, X.shape[2] + 1, 0]:
+                                Spline_input_values[batch_idx,0,1,:] = Spline_input_values[batch_idx,0,i,:]
+                                Spline_input_values[batch_idx, 0, 2:,:] = np.nan
+                                break
+                        continue
+                
                 i = 1
                 while i < Spline_input_values.shape[2]:
                     if Spline_input_values[batch_idx, 0, i, 0] > Spline_input_values[batch_idx, 0, i - 1, 0]:
@@ -183,6 +217,21 @@ class Adversarial(perturbation_template):
             spline_data[i,:,0] = xs
             spline_data[i,:,1] = Spline_function(xs)
 
+        plot_spline = True
+
+        if plot_spline:
+            for i in range(X.shape[0]):
+                plt.figure()
+                plt.plot(X[i,0,:,0], X[i,0,:,1], marker='o', linestyle='-', color='b', label='original_X')
+                plt.plot(Y[i,0,:,0], Y[i,0,:,1], marker='o', linestyle='-', color='g', label='original_Y')
+                plt.plot(spline_data[i,:,0], spline_data[i,:,1], marker='o', linestyle='-', color='r', label='spline')
+                plt.scatter(X[i,0,0,0],X[i,0,0,1], color='m', label='Start',s=100)
+                plt.scatter(Y[i,0,-1,0],Y[i,0,-1,1], color='y', label='end',s=100)
+                plt.scatter(Y[i,0,0,0],Y[i,0,0,1], color='c', label='begin_Y',s=100)
+                plt.axis('equal')
+                plt.legend()
+                plt.show()
+
         # Convert to tensor
         X_copy = X.copy()
         X = torch.from_numpy(X).to(dtype = torch.float32).to(device='cuda')
@@ -192,7 +241,7 @@ class Adversarial(perturbation_template):
         Y_eval = Y.clone()
 
         # Investigate specific sample of batch
-        specific_sample = False
+        specific_sample = None
 
         if specific_sample:
             sample_num = 0
@@ -210,11 +259,14 @@ class Adversarial(perturbation_template):
 
         # Learning rate
         learning_rate_decay = True
-        gamma = 0.98
+        gamma = 1
 
         # straight
-        alpha_acc = 0.0007
-        alpha_curv = 0.00001
+        alpha_acc = 5
+        alpha_curv = 0
+
+        # alpha_acc = 0.0007
+        # alpha_curv = 0.00001
 
         # Corner
         # alpha_acc = 10
@@ -228,7 +280,7 @@ class Adversarial(perturbation_template):
         ADE_exp_pred_loss_barrier = False
 
         # Collision loss
-        collision_loss = False
+        collision_loss = True
         collision_loss_barrier = False
         fake_collision_loss = False
         hide_collision_loss = False
@@ -258,35 +310,48 @@ class Adversarial(perturbation_template):
         X_new_print = torch.zeros_like(X)
         Y_new_print = torch.zeros_like(Y)
 
-        # Get the initial velocity and heading
-        dt = self.kwargs['data_param']['dt']
-        velocity_init = torch.linalg.norm(X[:,0,1,:] - X[:,0,0,:] , dim=-1, ord = 2) / dt
+        heading_init = torch.zeros(X.shape[0]).to(device='cuda')
+        velocity_init = torch.zeros(X.shape[0]).to(device='cuda')
 
-        dx = X[:, 0, 1, 0] - X[:, 0, 0, 0]  
-        dy = X[:, 0, 1, 1] - X[:, 0, 0, 1]  
-        heading_init = torch.atan2(dy, dx) 
 
-        # Initialize control actions
-        velocity = torch.zeros(X.shape[0],X.shape[2]).to(device='cuda')
-        angle = torch.zeros(X.shape[0],X.shape[2]).to(device='cuda')
+        for batch_idx in range(X.shape[0]):
+            if mask_values_X[batch_idx] == True:
+                
+                velocity_init[batch_idx] = 0
+                dx = X[batch_idx, 0, -1, 0] - X[batch_idx, 0, 0, 0]  
+                dy = X[batch_idx, 0, -1, 1] - X[batch_idx, 0, 0, 1]  
+                heading_init[batch_idx] = torch.atan2(dy, dx)
+                control_action[batch_idx,:,:,:] = 0 
+                          
 
-        for i in range(X.shape[2]-1):
-            velocity[:,0] = velocity_init 
-            velocity[:,i+1] = torch.linalg.norm(X[:,0,i+1,:] - X[:,0,i,:] , dim=-1, ord = 2) / dt 
-            control_action[:,0,i,0] = (velocity[:,i+1] - velocity[:,i]) / dt
-            if i == 0:
-                control_action[:,0,i,1] = 0
-                angle[:,i] = heading_init
             else:
-                dx = X[:, 0, i+1, 0] - X[:, 0, i, 0]
-                dy = X[:, 0, i+1, 1] - X[:, 0, i, 1]
-                angle[:,i] = torch.atan2(dy, dx).to(device='cuda')
-                d_yaw_rate = (angle[:,i] - angle[:,i-1]) / dt
-                curvature = d_yaw_rate / velocity[:,i]
-                # mask_nan = torch.isnan(curvature)
-                # mask_large_curvature = torch.abs(curvature) > epsilon_curv
-                control_action[:,0,i-1,1] = curvature
-                # control_action[:,0,i-1,1][mask_nan | mask_large_curvature] = 0
+                # Get the initial velocity and heading
+                dt = self.kwargs['data_param']['dt']
+                velocity_init[batch_idx] = torch.linalg.norm(X[batch_idx,0,1,:] - X[batch_idx,0,0,:] , dim=-1, ord = 2) / dt
+
+                dx = X[batch_idx, 0, 1, 0] - X[batch_idx, 0, 0, 0]  
+                dy = X[batch_idx, 0, 1, 1] - X[batch_idx, 0, 0, 1]  
+                heading_init[batch_idx] = torch.atan2(dy, dx) 
+
+                # Initialize control actions
+                velocity = torch.zeros(X.shape[2]).to(device='cuda')
+                angle = torch.zeros(X.shape[2]).to(device='cuda')
+
+                for i in range(X.shape[2]-1):
+                    velocity[0] = velocity_init[batch_idx] 
+                    velocity[i+1] = torch.linalg.norm(X[batch_idx,0,i+1,:] - X[batch_idx,0,i,:] , dim=-1, ord = 2) / dt 
+                    control_action[batch_idx,0,i,0] = (velocity[i+1] - velocity[i]) / dt
+                    if i == 0:
+                        control_action[batch_idx,0,i,1] = 0
+                        angle[i] = heading_init[batch_idx]
+                    else:
+                        dx = X[batch_idx, 0, i+1, 0] - X[batch_idx, 0, i, 0]
+                        dy = X[batch_idx, 0, i+1, 1] - X[batch_idx, 0, i, 1]
+                        angle[i] = torch.atan2(dy, dx).to(device='cuda')
+                        d_yaw_rate = (angle[i] - angle[i-1]) / dt
+                        curvature = d_yaw_rate / velocity[i]
+                        control_action[batch_idx,0,i-1,1] = curvature 
+
                 
 
         control_action[torch.isinf(control_action)] = 1e-6

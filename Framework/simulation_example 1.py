@@ -12,7 +12,7 @@ Data_sets = [{'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': '
                                                                                                                                         'data_set_dict': {'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': []},
                                                                                                                                         'data_param': {'dt': 0.1, 'num_timesteps_in': (12,12), 'num_timesteps_out': (12, 12)},
                                                                                                                                         'splitter_dict': {'Type': 'Random_split', 'repetition': [0], 'test_part': 0.2},
-                                                                                                                                        'model_dict': {'model': 'trajectron_salzmann_old','kwargs': {'seed':0}}}}]
+                                                                                                                                        'model_dict': {'model': 'trajectron_salzmann_old_copy','kwargs': {'seed':0}}}}]
 
 # Select the spitting methods to be considered
 Splitters = [{'Type': 'Random_split', 'repetition': [0], 'test_part': 0.2}]

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 
-class trajectron_salzmann_old(model_template):
+class trajectron_salzmann_old_copy(model_template):
     '''
     This is the orignial version of Trajectron++, a single agent prediction model
     that is mainly based on LSTM cells.
@@ -724,12 +724,12 @@ class trajectron_salzmann_old(model_template):
         return None
     
     def get_output_type(self = None):
-        return 'path_all_wi_pov'
+        return 'path_all_wo_pov'
     
     def get_name(self = None):
         self.define_default_kwargs()
 
-        names = {'print': 'Trajectron ++ (Old_version)',
+        names = {'print': 'Trajectron ++ (Old_version) copy',
                  'file': 't_pp_old_' + str(self.model_kwargs['seed']),
                  'latex': r'\emph{T++}'}
         return names
