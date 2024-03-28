@@ -19,7 +19,8 @@ Splitters = [{'Type': 'Random_split', 'repetition': [0], 'test_part': 0.2}]
 
 # Select the models to be trained
 Models = [{'model': 'trajectron_salzmann_old',
-	   'kwargs': {'seed': 0}}]
+	   'kwargs': {'seed': 0,
+                    'train_on_perturbed': True,}}]
 
 # Select the params for the datasets to be considered
 # Data_params = [{'dt': 0.1, 'num_timesteps_in': (7,7), 'num_timesteps_out': (30, 30), 'adv_gen': {'splitter_param': Splitters[0]}}] 

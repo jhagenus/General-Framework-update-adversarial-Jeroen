@@ -682,10 +682,9 @@ class trajectron_salzmann_old(model_template):
             
             self.save_predicted_batch_data(Pred_t, Sample_id, Agent_id)
 
-    def predict_batch_tensor(self,X,Y,T,Domain,num_steps):
+    def predict_batch_tensor(self,X,T,Domain,num_steps):
 
         X = X.to(self.trajectron.device)
-        Y = Y.to(self.trajectron.device)
         img = None
         self.trajectron.model_registrar.to(self.trajectron.device)
     
@@ -718,7 +717,7 @@ class trajectron_salzmann_old(model_template):
         # reverse translation
         Pred_t = Pred_r + center_pos
 
-        return Pred_t, Y
+        return Pred_t
 
 
     def check_trainability_method(self):
@@ -726,6 +725,7 @@ class trajectron_salzmann_old(model_template):
     
     def get_output_type(self = None):
         return 'path_all_wi_pov'
+        # return 'path_all_wo_pov'
     
     def get_name(self = None):
         self.define_default_kwargs()

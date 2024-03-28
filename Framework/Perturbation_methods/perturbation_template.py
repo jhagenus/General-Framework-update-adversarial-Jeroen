@@ -76,44 +76,28 @@ class perturbation_template():
         assert hasattr(self, 'batch_size'), "The batch size is not defined."
         assert isinstance(self.batch_size, int), "The given batch size must be an integer."
         
+        mask_values = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.1
 
-        # value = Y.shape[2]-3
+        X = X[~mask_values]
+        Y = Y[~mask_values]
+        T = T[~mask_values]
+        N_O = N_O[~mask_values]
+        Domain = Domain[~mask_values]
+        Input_path = Input_path[~mask_values]
+        Output_path = Output_path[~mask_values]
 
-        sorted_length = False
-
-        value = Y.shape[2]-3
-        
-        specific_length_first = True
-
-        if sorted_length:
-            real_value_counts = np.sum(~np.isnan(Y[:,:,:,0]), axis=2)
-            sorted_indices = np.flip(np.argsort(real_value_counts[:,0]))
-        else:
-            real_values_count = np.sum(~np.isnan(Y[:,0,:,0]), axis=1)
-            unique_values = np.flip(np.unique(real_values_count)).tolist()
-            if specific_length_first:
-                unique_values.remove(value)
-                unique_values.insert(0,value)
-                
-            sorted_indices_store = []
-            for values in unique_values:
-                values_related_length = np.where(real_values_count == values)[0]
-                random.shuffle(values_related_length)
-                sorted_indices_store.append(values_related_length)
-                
-            sorted_indices = np.concatenate(sorted_indices_store,axis=None).ravel()
-
+        sorted_indices = np.argsort(-N_O)
 
         # Reorder both X_pert and Y_pert arrays based on sorted indices
-        X = X[sorted_indices, :, :, :]
-        Y = Y[sorted_indices, :, :, :]
+        X_sort = X[sorted_indices]
+        Y_sort = Y[sorted_indices]
+        T_sort = T[sorted_indices]
+        N_O_sort = N_O[sorted_indices]
 
-        X = X[1:,:,:,:]
-        Y = Y[1:,:,:,:]
 
         # Run perturbation
-        X_pert = np.copy(X)
-        Y_pert = np.copy(Y)
+        X_pert_sort = np.copy(X_sort)
+        Y_pert_sort = np.copy(Y_sort)
 
         # Go through the data 
         num_batches = int(np.ceil(X.shape[0] / self.batch_size))
@@ -122,15 +106,20 @@ class perturbation_template():
             i_end = min((i_batch + 1) * self.batch_size, X.shape[0])
 
             samples = np.arange(i_start, i_end)
+
+            if N_O_sort[samples].min() not in [15]:
+                continue
             # TODO: Add images here
-            X_pert[samples], Y_pert[samples] = self.perturb_batch_2(X[samples], Y[samples], T[samples], Agents, Domain.iloc[samples])
+            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain.iloc[samples])
             # X_pert[samples], Y_pert[samples] = self.perturb_batch(X[samples], Y[samples], T[samples], Domain.iloc[samples])
             # outputs = self.adversarial_smoothing(X_pert[samples], X[samples], Y_pert[samples], Y[samples], T[samples], Domain.iloc[samples])
-            outputs = self.adversarial_smoothing(X_pert[samples], X[samples], Y_pert[samples], Y[samples], T[samples], Domain.iloc[samples])
+            # outputs = self.adversarial_smoothing(X_pert[samples], X[samples], Y_pert[samples], Y[samples], T[samples], Domain.iloc[samples])
 
             # outputs = self.adversarial_smoothing(X[samples], Y[samples], T[samples], Domain.iloc[samples])
 
-
+        sort_indices_inverse = np.argsort(sorted_indices)
+        X_pert = X_pert_sort[sort_indices_inverse]
+        Y_pert = Y_pert_sort[sort_indices_inverse]
 
 
         # Add unperturberd input and output columns to Domain

@@ -93,7 +93,7 @@ class Adversarial(perturbation_template):
         # Define the name of the perturbation method
         self.name = self.pert_model.model_file.split(os.sep)[-1][:-4]
 
-    def perturb_batch_2(self, X, Y, T, agent, Domain):
+    def perturb_batch(self, X, Y, T, agent, Domain):
         '''
         This function takes a batch of data and generates perturbations.
 
@@ -134,17 +134,21 @@ class Adversarial(perturbation_template):
 
         # Remove nan values
         Y_shape = Y.shape
-        Y_new_output = Y.copy()
         max_length = np.min(np.sum(~np.isnan(Y[:,:,:,0]), axis=2)[:,0])
         Y = Y[:,:,:max_length,:]
 
         # Change ego and tar vehicle
-        flip_dimensions = True
+        flip_dimensions = False
+
+        i_agent_perturbed = np.where(agent == 'tar')[0][0]
+        i_agent_collision = np.where(agent == 'ego')[0][0]
+        other_agents = np.arange(Y.shape[1])
+        other_agents = np.delete(other_agents, [i_agent_perturbed, i_agent_collision])
+        agent_order = np.array([i_agent_perturbed, i_agent_collision, *other_agents])
 
         if flip_dimensions:
-            X[:, [1, 0], :, :] = X[:, [0, 1], :, :]
-            Y[:, [1, 0], :, :] = Y[:, [0, 1], :, :]
-            Y_new_output[:, [1, 0], :, :] = Y_new_output[:, [0, 1], :, :]
+            X = X[:, agent_order, :, :]
+            Y = Y[:, agent_order, :, :]
 
         # Spline settings
         spline_X_Y = True
@@ -156,14 +160,15 @@ class Adversarial(perturbation_template):
         else:
             Spline_input_values = X.copy()
 
-        for batch_idx in range(X.shape[0]):
-            i = 1
-            while i < Spline_input_values.shape[2]:
-                if Spline_input_values[batch_idx, 0, i, 0] >= Spline_input_values[batch_idx, 0, i - 1, 0]:
-                    Spline_input_values[batch_idx, 0, i-1:,:] = np.nan
-                    break
-                else:
-                    i += 1
+        if flip_dimensions:
+            for batch_idx in range(X.shape[0]):
+                i = 1
+                while i < Spline_input_values.shape[2]:
+                    if Spline_input_values[batch_idx, 0, i, 0] > Spline_input_values[batch_idx, 0, i - 1, 0]:
+                        Spline_input_values[batch_idx, 0, i-1:,:] = np.nan
+                        break
+                    else:
+                        i += 1
 
         # Spline historical data
         for i in range(X.shape[0]):
@@ -184,6 +189,8 @@ class Adversarial(perturbation_template):
         Y = torch.from_numpy(Y).to(dtype = torch.float32).to(device='cuda')
         spline_data = torch.from_numpy(spline_data).to(dtype = torch.float32).to(device='cuda')
 
+        Y_eval = Y.clone()
+
         # Investigate specific sample of batch
         specific_sample = False
 
@@ -198,8 +205,8 @@ class Adversarial(perturbation_template):
         iter_num = 1
         epsilon_acc = 10
         epsilon_curv = 0.2
-        distance_threshold = 1
-        collision_threshold = 1.5
+        distance_threshold_past = 1
+        Distance_threshold_future = 2
 
         # Learning rate
         learning_rate_decay = True
@@ -207,29 +214,34 @@ class Adversarial(perturbation_template):
 
         # straight
         alpha_acc = 0.0007
-        alpha_curv = 0.00007
+        alpha_curv = 0.00001
 
         # Corner
         # alpha_acc = 10
-        # alpha_curv = 0.01
+        # alpha_curv = 0.0000001
 
         # Select loss function
         #ADE loss
-        ADE_loss = False
+        ADE_loss = True
         ADE_loss_barrier = False
         ADE_exp_pred_loss = False
         ADE_exp_pred_loss_barrier = False
 
         # Collision loss
         collision_loss = False
-        collision_loss_barrier = True
+        collision_loss_barrier = False
         fake_collision_loss = False
         hide_collision_loss = False
 
         # Barrier function
-        log_barrier = False
+        log_barrier = True
         ADVDO_barrier = False
-        spline_barrier = True
+        spline_barrier_past = False
+
+        # Barrier function parameters
+        log_value = 1.4
+        spline_value_past = 1.05
+        log_value_future = 1.1
 
         # Create new input for the optimization
         if ADE_exp_pred_loss or ADE_exp_pred_loss_barrier or fake_collision_loss or hide_collision_loss:
@@ -256,7 +268,6 @@ class Adversarial(perturbation_template):
 
         # Initialize control actions
         velocity = torch.zeros(X.shape[0],X.shape[2]).to(device='cuda')
-        curvature = torch.zeros(X.shape[0],X.shape[2]).to(device='cuda')
         angle = torch.zeros(X.shape[0],X.shape[2]).to(device='cuda')
 
         for i in range(X.shape[2]-1):
@@ -271,10 +282,18 @@ class Adversarial(perturbation_template):
                 dy = X[:, 0, i+1, 1] - X[:, 0, i, 1]
                 angle[:,i] = torch.atan2(dy, dx).to(device='cuda')
                 d_yaw_rate = (angle[:,i] - angle[:,i-1]) / dt
-                control_action[:,0,i-1,1] = d_yaw_rate / velocity[:,i]
+                curvature = d_yaw_rate / velocity[:,i]
+                # mask_nan = torch.isnan(curvature)
+                # mask_large_curvature = torch.abs(curvature) > epsilon_curv
+                control_action[:,0,i-1,1] = curvature
+                # control_action[:,0,i-1,1][mask_nan | mask_large_curvature] = 0
+                
 
         control_action[torch.isinf(control_action)] = 1e-6
         control_action.requires_grad = True 
+
+        print(control_action)
+
 
         # Start the optimization of the adversarial attack
         for i in range(iter_num):
@@ -314,7 +333,8 @@ class Adversarial(perturbation_template):
 
             # Output forward pass
             num_steps = Y.shape[2]
-            Pred_t, Y_eval = self.pert_model.predict_batch_tensor(X_new,Y,T,Domain, num_steps)
+            print(X_new)
+            Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain, num_steps)
 
             # Calculate ADE loss
             ADE_adv_future = torch.mean(torch.mean(torch.linalg.norm(Y_eval[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
@@ -326,34 +346,44 @@ class Adversarial(perturbation_template):
             collision_adv_perturb_future = torch.mean(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
 
             # Calculate no collision loss
-            no_collision_adv_prediction_future = torch.log(torch.mean(torch.linalg.norm(Y_eval[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)-collision_threshold)
-            no_collision_adv_perturb_future = torch.log(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values - collision_threshold)
-
+            # no_collision_adv_prediction_future = torch.log(torch.mean(torch.linalg.norm(Y_eval[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)-collision_threshold_future)
+            # no_collision_adv_perturb_future = torch.log(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values - collision_threshold_future)
 
             # Add  regularization loss to adversarial input using barrier function
             if log_barrier:
                 barrier_norm = torch.norm(X_new[:,0,:,:] - X[:,0,:,:], dim = -1)
-                barrier_log = torch.log(distance_threshold - barrier_norm)
-                barrier_log_new = barrier_log / torch.log(torch.tensor(1.2))
+                barrier_log = torch.log(distance_threshold_past - barrier_norm)
+                barrier_log_new = barrier_log / torch.log(torch.tensor(log_value))
                 barrier_output = torch.mean(barrier_log_new,dim=-1)
             elif ADVDO_barrier:
                 barrier_norm = torch.norm(X_new[:,0,:,:] - X[:,0,:,:], dim = -1)
-                barrier_output = -((barrier_norm / distance_threshold) - torch.sigmoid(barrier_norm / distance_threshold) + 0.5).sum(dim=-1)
-                # barrier_output = -torch.mean((barrier_norm / distance_threshold) - torch.sigmoid(barrier_norm / distance_threshold) + 0.5,dim=-1)
-            elif spline_barrier:
+                barrier_output = -((barrier_norm / distance_threshold_past) - torch.sigmoid(barrier_norm / distance_threshold_past) + 0.5).sum(dim=-1)
+            elif spline_barrier_past:
                 distance = torch.cdist(X_new[:,0,:,:], spline_data, p=2)
                 min_indices = torch.argmin(distance, dim=-1)
-
-                closest_points = torch.gather(spline_data.unsqueeze(1).expand(-1, X_new.shape[2], -1, -1), 
-                              2,
-                              min_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, spline_data.size(-1)))
-                
+                closest_points = torch.gather(spline_data.unsqueeze(1).expand(-1, X_new.shape[2], -1, -1), 2, min_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, spline_data.size(-1)))
                 closest_points = closest_points.squeeze(2)
-
                 barrier_norm = torch.norm(X_new[:,0,:,:] - closest_points, dim = -1)
-                barrier_output = torch.log(distance_threshold - barrier_norm)
-                barrier_log_new = barrier_output / torch.log(torch.tensor(1.05))
+                barrier_output = torch.log(distance_threshold_past - barrier_norm)
+                barrier_log_new = barrier_output / torch.log(torch.tensor(spline_value_past))
                 barrier_output = torch.mean(barrier_log_new,dim=-1)
+
+            
+            # if fake_collision_loss or hide_collision_loss:
+            #     if fake_collision_loss:
+            #         distance_future = torch.cdist(Y_new[:,0,:,:], spline_data, p=2)
+            #     else:
+            #         distance_future = torch.cdist(np.mean(Pred_t, axis=1), spline_data, p=2)
+
+            #     min_indices_future = torch.argmin(distance_future, dim=-1)
+
+            #     closest_points_future = torch.gather(spline_data.unsqueeze(1).expand(-1, Y_new.shape[2], -1, -1), 2, min_indices_future.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, spline_data.size(-1)))
+            #     closest_points_future = closest_points_future.squeeze(2)
+
+            #     barrier_norm_future = torch.norm(Y_new[:,0,:,:] - closest_points_future, dim = -1)
+            #     barrier_output_future = torch.log(Distance_threshold_future - barrier_norm_future)
+            #     barrier_log_new_future = barrier_output_future / torch.log(torch.tensor(log_value_future))
+            #     barrier_output_future = torch.mean(barrier_log_new_future,dim=-1)
 
             # Calculate the total loss
             if ADE_loss:
@@ -369,9 +399,9 @@ class Adversarial(perturbation_template):
             elif collision_loss_barrier:
                 losses = -collision_adv_prediction_future + barrier_output
             elif fake_collision_loss:
-                losses = -collision_adv_prediction_future + no_collision_adv_perturb_future + barrier_output
+                losses = -collision_adv_prediction_future + barrier_output + barrier_output_future
             elif hide_collision_loss:
-                losses = -collision_adv_perturb_future + no_collision_adv_prediction_future + barrier_output
+                losses = -collision_adv_perturb_future + barrier_output + barrier_output_future
 
             # Store the loss for plot
             loss_store.append(losses.detach().cpu().numpy())
@@ -424,16 +454,17 @@ class Adversarial(perturbation_template):
                 plt.show()
 
         # Return to old shape
-        Y_output = np.expand_dims(Pred_t, axis=1)
-        nan_array = np.full((Y_shape[0], 1, Y_shape[2]-Y_output.shape[2], Y_shape[3]), np.nan)
-        Y_output = np.concatenate((Y_output, nan_array), axis=2)
-        Y_new_output[:,0,:,:] = Y_output[:,0,:,:]
+        Y_pred = np.expand_dims(Pred_t, axis=1)
+        
+        nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_new.shape[2], Y_shape[3]), np.nan)
+        Y_output = np.concatenate((Y_new, nan_array), axis=2)
 
         if flip_dimensions:
-            X_new[:, [1, 0], :, :] = X_new[:, [0, 1], :, :]
-            Y_new_output[:, [1, 0], :, :] = Y_new_output[:, [0, 1], :, :]
+            agent_order_inverse = np.argsort(agent_order)
+            X_new_pert = X_new[:, agent_order_inverse, :, :]
+            Y_new_pert = Y_output[:, agent_order_inverse, :, :]
 
-        return X_new, Y_output
+        return X_new_pert, Y_new_pert
     
     # def adversarial_smoothing(self, X, Y_new, Y, T, Domain):
     
@@ -528,192 +559,6 @@ class Adversarial(perturbation_template):
 
         return outputs
 
-    def perturb_batch(self, X, Y, T, Domain):
-        '''
-        This function takes a batch of data and generates perturbations.
-
-
-        Parameters
-        ----------
-        X : np.ndarray
-            This is the past observed data of the agents, in the form of a
-            :math:`\{N_{samples} \times N_{agents} \times N_{I} \times 2\}` dimensional numpy array with float values. 
-            If an agent is fully or at some timesteps partially not observed, then this can include np.nan values.
-        Y : np.ndarray, optional
-            This is the future observed data of the agents, in the form of a
-            :math:`\{N_{samples} \times N_{agents} \times N_{O} \times 2\}` dimensional numpy array with float values. 
-            If an agent is fully or at some timesteps partially not observed, then this can include np.nan values. 
-            This value is not returned for **mode** = *'pred'*.
-        T : np.ndarray
-            This is a :math:`\{N_{samples} \times N_{agents}\}` dimensional numpy array. It includes strings that indicate
-            the type of agent observed (see definition of **provide_all_included_agent_types()** for available types).
-            If an agent is not observed at all, the value will instead be '0'.
-        Agent_names : np.ndarray
-            This is a :math:`N_{agents}` long numpy array. It includes strings with the names of the agents.
-
-        Returns
-        -------
-        X_pert : np.ndarray
-            This is the past perturbed data of the agents, in the form of a
-            :math:`\{N_{samples} \times N_{agents} \times N_{I} \times 2\}` dimensional numpy array with float values. 
-            If an agent is fully or at some timesteps partially not observed, then this can include np.nan values.
-        Y_pert : np.ndarray, optional
-            This is the future perturbed data of the agents, in the form of a
-            :math:`\{N_{samples} \times N_{agents} \times N_{O} \times 2\}` dimensional numpy array with float values. 
-            If an agent is fully or at some timesteps partially not observed, then this can include np.nan values. 
-
-
-        '''
-
-        X_copy = X.copy()
-        X = torch.from_numpy(X).to(dtype = torch.float32).to(device='cuda')
-        Y = torch.from_numpy(Y).to(dtype = torch.float32).to(device='cuda')
-
-        specific_sample = False
-
-        if specific_sample:
-            sample_num = 0
-            sample_num_help = sample_num + 1
-
-            X = X[sample_num:sample_num_help,...]
-            Y = Y[sample_num:sample_num_help,...]
-            T = T[sample_num:sample_num_help,...]
-
-        control_action = torch.zeros_like(X)
-        # control_action[..., 0] = 0
-        control_action.requires_grad = True 
-
-        iter_num = 100
-        epsilon_acc = 10
-        epsilon_curv = 0.2
-
-        # # alpha for maximize ade
-        # alpha_acc = 0.0007
-        # alpha_curv = 0.00007
-
-        alpha_acc = 0.1
-        alpha_curv = 0.0001
-
-        plot_figure = True
-
-        learning_rate_decay = True
-        gamma = 0.98
-
-        ADE_loss = True
-        no_attention_loss = False
-
-        distance_threshold = 1
-
-        loss_store = []
-
-        X_new_print = torch.zeros_like(X)
-
-        dt = self.kwargs['data_param']['dt']
-
-        velocity_init = torch.linalg.norm(X[:,0,1,:] - X[:,0,0,:] , dim=-1, ord = 2) / dt
-
-        self.ade = None
-        
-        for i in range(iter_num):
-            control_action.grad = None
-
-            velocity = velocity_init
-            heading = 0
-
-            X_new = X.clone().detach()
-
-            for i in range(X.shape[2]-1):
-                d_yaw_rate = velocity * control_action[:,0,i,1]
-                heading = heading + d_yaw_rate * dt
-
-                X_new[:, 0, i+1, 0] = velocity * torch.cos(heading) * dt + X_new[:, 0, i, 0]
-                X_new[:, 0, i+1, 1] = velocity * torch.sin(heading) * dt + X_new[:, 0, i, 1]
-
-                velocity = control_action[:,0,i,0] * dt + velocity
-
-            
-
-            X_new_print = X_new
-
-            # Output forward pass
-            Pred_t, Y_eval = self.pert_model.predict_batch_tensor(X_new,Y,T,Domain,num_steps = 14)
-
-            # Calculate ADE loss
-            ade = torch.mean(torch.linalg.norm(Y_eval[:,0,:14,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1)
-            losses, indices = torch.min(ade,dim=-1)
-
-            self.ade = ade
-
-            # Calculate no attention loss
-            average_pred_t = torch.mean(Pred_t, dim=1)
-            distance = torch.linalg.norm(Y_eval[:,1,:,:] - average_pred_t, dim=-1 , ord = 2).min(dim=-1).values
-            # distance = torch.mean(torch.linalg.norm(Y_eval[:,1,:,:] - average_pred_t, dim=-1 , ord = 2), dim = -1)
-
-
-            # Add penalty with barrier function
-            log_norm = torch.norm(X_new[:,0,:,:] - X[:,0,:,:], dim = -1)
-            log_output = torch.log(distance_threshold - log_norm).sum(dim=-1)
-
-            # Calculate total loss
-            if ADE_loss:
-                total_loss = losses
-            elif no_attention_loss:
-                total_loss = -distance + log_output
-            else:
-                total_loss = losses
-
-            loss_store.append(total_loss.detach().cpu().numpy())
-
-            # Calulate gradients
-            total_loss.sum().backward()
-            grad = control_action.grad
-
-            # Include learning rate decay
-            if learning_rate_decay:
-                alpha_acc = alpha_acc * (gamma**i)
-                alpha_curv = alpha_curv * (gamma**i)
-
-            # Update Control inputs
-            with torch.no_grad():
-                control_action[:,0,:,0].add_(grad[:,0,:,0], alpha=alpha_acc)
-                control_action[:,0,:,1].add_(grad[:,0,:,1], alpha=alpha_curv)
-                control_action[:,0,:,0].clamp_(-epsilon_acc, epsilon_acc)
-                control_action[:,0,:,1].clamp_(-epsilon_curv, epsilon_curv)
-                control_action[:,1:] = 0.0
-
-        X_new = X_new_print.detach().cpu().numpy()
-        Y_new = Y.detach().cpu().numpy()
-        Pred_t = Pred_t.detach().cpu().numpy()
-
-        if plot_figure:
-            plt.figure(0)
-            plt.plot(loss_store, marker='o', linestyle='-')
-            plt.title('Loss for samples')
-            plt.xlabel('Iteration')
-            plt.ylabel('Loss')
-            plt.grid(True)
-            plt.show()
-
-            for i in range(X.shape[0]):
-                plt.figure()
-                plt.plot(X_copy[i,0,:,0], X_copy[i,0,:,1], marker='o', linestyle='-', color='b')
-                plt.plot(X_copy[i,1,:,0], X_copy[i,1,:,1], marker='o', linestyle='-', color='b')
-                plt.plot(X_new[i,0,:,0], X_new[i,0,:,1], marker='o', linestyle='-', color='g')
-                plt.plot(Pred_t[i,0,:,0], Pred_t[i,0,:,1], marker='o', linestyle='-', color='r')
-                plt.plot(Y_new[i,0,:,0], Y_new[i,0,:,1], marker='o', linestyle='-', color='y')
-                plt.plot(Y_new[i,1,:,0], Y_new[i,1,:,1], marker='o', linestyle='-', color='y')
-                plt.axis('equal')
-                plt.show()
-            
-            print(X_new[0,0,:,1]-X_copy[0,0,:,1])
-            print(control_action)
-
-        Y_output = np.mean(Pred_t, axis=1)
-        Y_output = np.expand_dims(Y_output, axis=1)
-
-        return X_new, Y_output
-
-
 
     def set_batch_size(self):
         '''
@@ -733,7 +578,7 @@ class Adversarial(perturbation_template):
 
         # raise AttributeError('This function has to be implemented in the actual perturbation method.')
 
-
+    
     def requirerments(self):
         '''
         This function returns the requirements for the data to be perturbed.

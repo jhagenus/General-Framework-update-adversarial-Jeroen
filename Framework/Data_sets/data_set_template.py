@@ -1057,7 +1057,6 @@ class data_set_template():
             self.Recorded.index         = self.Input_path.index
             self.Domain.index           = self.Input_path.index
             
-            print(self.is_perturbed)
             # Apply perturbation if necessary
             if self.is_perturbed:
                 self = self.Perturbation.perturb(self)

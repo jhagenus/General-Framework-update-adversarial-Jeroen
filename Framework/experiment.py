@@ -211,8 +211,8 @@ class Experiment():
         model_class_to_path = getattr(model_to_path_module, model_for_path_transform)
         
         # Test the parameters        
-        if model_class_to_path == None or model_class_to_path.get_output_type() != 'path_all_wi_pov':
-            raise TypeError("The chosen model does not predict trajectories.")
+        # if model_class_to_path == None or model_class_to_path.get_output_type() != 'path_all_wi_pov':
+        #     raise TypeError("The chosen model does not predict trajectories.")
 
         # Set the number of paths that a trajectory prediction model has to predict
         assert isinstance(num_samples_path_pred, int), "num_samples_path_pred should be an integer."
