@@ -217,7 +217,7 @@ class Adversarial(perturbation_template):
             spline_data[i,:,0] = xs
             spline_data[i,:,1] = Spline_function(xs)
 
-        plot_spline = True
+        plot_spline = False
 
         if plot_spline:
             for i in range(X.shape[0]):
@@ -251,19 +251,19 @@ class Adversarial(perturbation_template):
             T = T[sample_num:sample_num_help,...] 
 
         # Initialize parameters
-        iter_num = 1
-        epsilon_acc = 10
+        iter_num = 50
+        epsilon_acc = 2
         epsilon_curv = 0.2
         distance_threshold_past = 1
-        Distance_threshold_future = 2
+        Distance_threshold_future = 1
 
         # Learning rate
         learning_rate_decay = True
         gamma = 1
 
         # straight
-        alpha_acc = 5
-        alpha_curv = 0
+        alpha_acc = 1
+        alpha_curv = 0.001
 
         # alpha_acc = 0.0007
         # alpha_curv = 0.00001
@@ -274,26 +274,27 @@ class Adversarial(perturbation_template):
 
         # Select loss function
         #ADE loss
-        ADE_loss = True
+
+        ADE_loss = False
         ADE_loss_barrier = False
         ADE_exp_pred_loss = False
         ADE_exp_pred_loss_barrier = False
 
         # Collision loss
-        collision_loss = True
-        collision_loss_barrier = False
+        collision_loss = False
+        collision_loss_barrier = True
         fake_collision_loss = False
         hide_collision_loss = False
 
         # Barrier function
-        log_barrier = True
+        log_barrier = False
         ADVDO_barrier = False
-        spline_barrier_past = False
+        spline_barrier_past = True
 
         # Barrier function parameters
-        log_value = 1.4
-        spline_value_past = 1.05
-        log_value_future = 1.1
+        log_value = 1.2
+        spline_value_past = 1.3
+        log_value_future = 2.71828
 
         # Create new input for the optimization
         if ADE_exp_pred_loss or ADE_exp_pred_loss_barrier or fake_collision_loss or hide_collision_loss:
@@ -315,7 +316,7 @@ class Adversarial(perturbation_template):
 
 
         for batch_idx in range(X.shape[0]):
-            if mask_values_X[batch_idx] == True:
+            if mask_values_X[batch_idx] == True and flip_dimensions == True:
                 
                 velocity_init[batch_idx] = 0
                 dx = X[batch_idx, 0, -1, 0] - X[batch_idx, 0, 0, 0]  
@@ -352,13 +353,8 @@ class Adversarial(perturbation_template):
                         curvature = d_yaw_rate / velocity[i]
                         control_action[batch_idx,0,i-1,1] = curvature 
 
-                
-
         control_action[torch.isinf(control_action)] = 1e-6
         control_action.requires_grad = True 
-
-        print(control_action)
-
 
         # Start the optimization of the adversarial attack
         for i in range(iter_num):
@@ -398,21 +394,26 @@ class Adversarial(perturbation_template):
 
             # Output forward pass
             num_steps = Y.shape[2]
-            print(X_new)
             Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain, num_steps)
 
             # Calculate ADE loss
-            ADE_adv_future = torch.mean(torch.mean(torch.linalg.norm(Y_eval[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
-            ADE_feasibility = torch.mean(torch.linalg.norm(Y_new[:,0,:,:] - Y_eval[:,0,:,:], dim=-1 , ord = 2), dim=-1)
-            ADE_exp_pred = torch.mean(torch.mean(torch.linalg.norm(Y_new[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
+            if ADE_loss or ADE_loss_barrier:
+                ADE_adv_future = torch.mean(torch.mean(torch.linalg.norm(Y_eval[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
+                
+            if ADE_exp_pred_loss or ADE_exp_pred_loss_barrier:
+                ADE_exp_pred = torch.mean(torch.mean(torch.linalg.norm(Y_new[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
 
             # Calculate collision loss
-            collision_adv_prediction_future = torch.mean(torch.linalg.norm(Y_eval[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
-            collision_adv_perturb_future = torch.mean(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
+            if collision_loss or collision_loss_barrier or fake_collision_loss:
+                collision_adv_prediction_future = torch.mean(torch.linalg.norm(Y_eval[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
+            if hide_collision_loss:
+                collision_adv_perturb_future = torch.mean(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
 
             # Calculate no collision loss
-            # no_collision_adv_prediction_future = torch.log(torch.mean(torch.linalg.norm(Y_eval[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)-collision_threshold_future)
-            # no_collision_adv_perturb_future = torch.log(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values - collision_threshold_future)
+            if hide_collision_loss:
+                no_collision_adv_prediction_future = torch.log(torch.mean(torch.linalg.norm(Y_eval[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)-Distance_threshold_future) / torch.log(torch.tensor(log_value_future)) 
+            if fake_collision_loss:
+                no_collision_adv_perturb_future = torch.log(torch.linalg.norm(Y_eval[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values - Distance_threshold_future) / torch.log(torch.tensor(log_value_future))
 
             # Add  regularization loss to adversarial input using barrier function
             if log_barrier:
@@ -464,12 +465,14 @@ class Adversarial(perturbation_template):
             elif collision_loss_barrier:
                 losses = -collision_adv_prediction_future + barrier_output
             elif fake_collision_loss:
-                losses = -collision_adv_prediction_future + barrier_output + barrier_output_future
+                losses = -collision_adv_prediction_future + barrier_output + no_collision_adv_perturb_future
             elif hide_collision_loss:
-                losses = -collision_adv_perturb_future + barrier_output + barrier_output_future
+                losses = -collision_adv_perturb_future + barrier_output + no_collision_adv_prediction_future 
 
             # Store the loss for plot
             loss_store.append(losses.detach().cpu().numpy())
+
+            print(losses)
 
             # Calulate gradients
             losses.sum().backward()
