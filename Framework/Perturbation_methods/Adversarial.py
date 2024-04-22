@@ -188,7 +188,7 @@ class Adversarial(perturbation_template):
         #ADE loss
         ADE_loss = False
         ADE_loss_barrier = False
-        ADE_loss_adv_future = True
+        ADE_loss_adv_future = False
         ADE_loss_adv_future_barrier = False
 
         # Collision loss
@@ -196,7 +196,7 @@ class Adversarial(perturbation_template):
         collision_loss_barrier = False
         fake_collision_loss = False
         fake_collision_loss_barrier = False
-        hide_collision_loss = False
+        hide_collision_loss = True
         hide_collision_loss_barrier = False
 
         # check if only one loss function is activated
@@ -1243,12 +1243,3 @@ class Adversarial(perturbation_template):
 
         return {}
     
-# mask = ~torch.isnan(adv_position[:, 0, i + 1, 0])  
-    
-                # d_yaw_rate = velocity[mask] * control_action[mask, 0, i, 1] 
-                # heading[mask] = heading[mask] + d_yaw_rate * dt
-
-                # adv_position[mask, 0, i+1, 0] = velocity[mask] * torch.cos(heading[mask]) * dt + adv_position[mask, 0, i, 0]
-                # adv_position[mask, 0, i+1, 1] = velocity[mask] * torch.sin(heading[mask]) * dt + adv_position[mask, 0, i, 1]
-
-                # velocity[mask] = control_action[mask, 0, i, 0] * dt + velocity[mask] 
