@@ -87,6 +87,7 @@ class perturbation_template():
         Y_sort = Y[sorted_indices]
         T_sort = T[sorted_indices]
         N_O_sort = N_O[sorted_indices]
+        Domain_sort = Domain.iloc[sorted_indices]
 
 
         # Run perturbation
@@ -100,16 +101,14 @@ class perturbation_template():
             i_end = min((i_batch + 1) * self.batch_size, X.shape[0])
 
             samples = np.arange(i_start, i_end)
+            
 
-            if N_O_sort[samples].min() not in [15]:
+            if N_O_sort[samples].min() not in [14]:
                 continue
             # TODO: Add images here
-            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain.iloc[samples])
-            # X_pert[samples], Y_pert[samples] = self.perturb_batch(X[samples], Y[samples], T[samples], Domain.iloc[samples])
-            # outputs = self.adversarial_smoothing(X_pert[samples], X[samples], Y_pert[samples], Y[samples], T[samples], Domain.iloc[samples])
-            # outputs = self.adversarial_smoothing(X_pert[samples], X[samples], Y_pert[samples], Y[samples], T[samples], Domain.iloc[samples])
+            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples])
+            # outputs = self.adversarial_smoothing(X_pert_sort[samples], X_sort[samples], Y_pert_sort[samples], Y_sort[samples], T_sort[samples], Domain_sort.iloc[samples])
 
-            # outputs = self.adversarial_smoothing(X[samples], Y[samples], T[samples], Domain.iloc[samples])
 
         sort_indices_inverse = np.argsort(sorted_indices)
         X_pert = X_pert_sort[sort_indices_inverse]
@@ -123,8 +122,8 @@ class perturbation_template():
         # Write the unperturbed data into new columns in domain and overwrite Input_path and Output_path with the perturbed data
         for i_sample, i_index in enumerate(Input_path.index):
             # Save the unperturbed data
-            Domain.loc[i_index, 'Unperturbed_input']  = Input_path.loc[i_index].copy()
-            Domain.loc[i_index, 'Unperturbed_output'] = Output_path.loc[i_index].copy()
+            Domain.loc[i_index, ['Unperturbed_input']]  = Input_path.loc[i_index].copy()
+            Domain.loc[i_index, ['Unperturbed_output']] = Output_path.loc[i_index].copy()
 
             # Overwrite data with
             for i_agent, agent in enumerate(Agents):

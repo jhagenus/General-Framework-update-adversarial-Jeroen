@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 
-class trajectron_salzmann_old_copy(model_template):
+class trajectron_salzmann_old_train(model_template):
     '''
     This is the orignial version of Trajectron++, a single agent prediction model
     that is mainly based on LSTM cells.
@@ -631,22 +631,11 @@ class trajectron_salzmann_old_copy(model_template):
             self.weights_saved.append(weigths.detach().cpu().numpy())
         
         
-    # def load_method(self, l2_regulization = 0):
-    #     Weights = list(self.trajectron.model_registrar.parameters())
-    #     with torch.no_grad():
-    #         for i, weights in enumerate(self.weights_saved):
-    #             Weights[i][:] = torch.from_numpy(weights)[:]
-
     def load_method(self, l2_regulization = 0):
         Weights = list(self.trajectron.model_registrar.parameters())
         with torch.no_grad():
-            ii = 0
             for i, weights in enumerate(self.weights_saved):
-                weights_torch = torch.from_numpy(weights)
-                if Weights[ii].shape == weights_torch: # To check for equal shapes, this might be something different
-                    Weights[ii][:] = weights_torch[:]
-                    ii += 1
-
+                Weights[i][:] = torch.from_numpy(weights)[:]
         
     def predict_method(self):
         batch_size = max(1, int(self.trajectron.hyperparams['batch_size'] / 10))
@@ -740,8 +729,8 @@ class trajectron_salzmann_old_copy(model_template):
     def get_name(self = None):
         self.define_default_kwargs()
 
-        names = {'print': 'Trajectron ++ (Old_version) copy',
-                 'file': 't_pp_old_copy' + str(self.model_kwargs['seed']),
+        names = {'print': 'Trajectron ++ (Old_version)',
+                 'file': 't_pp_old_' + str(self.model_kwargs['seed']),
                  'latex': r'\emph{T++}'}
         return names
         
