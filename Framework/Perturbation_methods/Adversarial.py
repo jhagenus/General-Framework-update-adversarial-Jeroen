@@ -141,16 +141,16 @@ class Adversarial(perturbation_template):
         torch.autograd.set_detect_anomaly(True)
 
         # settings
-        # Plot settings input data and spline 
-        plot_input = False
-        plot_spline = False
+        # Plot input data and spline (if plot is True -> plot_spline can be set on True) 
+        plot_input = True
+        plot_spline = True
 
         # Plot the loss over the iterations
-        plot_loss = False
+        plot_loss = True
         loss_store = []
 
         # Plot the adversarial scene
-        static_adv_scene = False
+        static_adv_scene = True
         animated_adv_scene = True
 
         # Car size
@@ -160,7 +160,7 @@ class Adversarial(perturbation_template):
         # validation settings
         self.validate_plot_settings(plot_input, plot_spline)
 
-        # Change ego and tar vehicle
+        # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
         flip_dimensions = True
 
         # Spline settings
@@ -168,34 +168,36 @@ class Adversarial(perturbation_template):
         spline_interval = 100
 
         # Initialize parameters
-        iter_num = 1
+        iter_num = 5
         epsilon_acc = 7
         epsilon_curv = 0.2
 
-        # Learning rate
+        # Learning decay
         learning_rate_decay = True
         gamma = 1
 
         # Learning rate
         alpha_acc = 3
-        alpha_curv = 0.05
+        alpha_curv = 0.02
 
-        # Make copy of the original data and remove nan from input
+        # remove nan from input and remember old shape
         Y_shape = Y.shape
         Y = self.remove_nan_values(Y)
 
         # Select loss function ()
         #ADE loss
-        ADE_loss = True
+        ADE_loss = False
         ADE_loss_barrier = False
-        ADE_loss_adv_future = False
+        ADE_loss_adv_future = True
         ADE_loss_adv_future_barrier = False
 
         # Collision loss
         collision_loss = False
         collision_loss_barrier = False
         fake_collision_loss = False
+        fake_collision_loss_barrier = False
         hide_collision_loss = False
+        hide_collision_loss_barrier = False
 
         # check if only one loss function is activated
         self.assert_only_one_true(
@@ -206,7 +208,9 @@ class Adversarial(perturbation_template):
                 collision_loss,
                 collision_loss_barrier,
                 fake_collision_loss,
-                hide_collision_loss
+                fake_collision_loss_barrier,
+                hide_collision_loss,
+                hide_collision_loss_barrier
             )
 
         # Barrier function
@@ -277,7 +281,11 @@ class Adversarial(perturbation_template):
 
             # check if cotrol action are converted correctly
             if i == 0:
-                equal_tensors = torch.round(adv_position[:, 0, :], decimals=5) == torch.round(X[:, 0, :], decimals=5)
+                if future_action:
+                    equal_tensors = torch.round(adv_position[:, 0, :X.shape[2], :], decimals=5) == torch.round(X[:, 0, :], decimals=5)
+                else:
+                    equal_tensors = torch.round(adv_position[:, 0, :], decimals=5) == torch.round(X[:, 0, :], decimals=5)
+
                 if not torch.all(equal_tensors):
                     raise ValueError("The dynamical transformation is not correct.")
                 
@@ -298,7 +306,9 @@ class Adversarial(perturbation_template):
                         collision_loss,
                         collision_loss_barrier,
                         fake_collision_loss,
+                        fake_collision_loss_barrier,
                         hide_collision_loss,
+                        hide_collision_loss_barrier,
                         log_barrier,
                         ADVDO_barrier,
                         spline_barrier,
@@ -344,27 +354,29 @@ class Adversarial(perturbation_template):
                 static_adv_scene,
                 animated_adv_scene,
                 car_length,
-                car_width
+                car_width,
+                mask_values_X, 
+                mask_values_Y
             )
 
         # Return Y to old shape
-        nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
-        Y_new_pert = np.concatenate((Y_new_pert, nan_array), axis=2)
+        Y_new_pert = self.return_to_old_shape(Y_new_pert, Y_shape, agent_order)
 
         if flip_dimensions:
             agent_order_inverse = np.argsort(agent_order)
             X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
             Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
         
-
         return X_new_pert, Y_new_pert
   
-
+    def return_to_old_shape(self,Y_new_pert, Y_shape, agent_order):
+        nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
+        return np.concatenate((Y_new_pert, nan_array), axis=2)
+    
     def validate_plot_settings(self,plot_input, plot_spline):
         if plot_spline and not plot_input:
             raise ValueError("plot_spline can only be True if plot_input is also True.")
     
-
     def remove_nan_values(self, Y):
         # Calculate the maximum length where all values are non-NaN in the path lenght channel across all samples
         max_length = np.min(np.sum(~np.isnan(Y[:, :, :, 0]), axis=2)[:, 0])
@@ -379,9 +391,9 @@ class Adversarial(perturbation_template):
         assert sum(args) == 1, "Assertion Error: Exactly one loss function must be activated."
 
     def masked_data(self, X, Y):
-        # Check the edge case scenario where the vehicle is standing still, by checking if the first and last position are within 10 cm
-        mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.1
-        mask_values_Y = np.abs(Y[:,1,0,0]-Y[:,1,-1,0]) < 0.1
+        # Check the edge case scenario where the vehicle is standing still, by checking if the first and last position are within 2 meters
+        mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.2
+        mask_values_Y = np.abs(Y[:,1,0,1]-Y[:,1,-1,1]) < 0.2
 
         return mask_values_X, mask_values_Y
 
@@ -681,7 +693,7 @@ class Adversarial(perturbation_template):
 
         return adv_position
     
-    def calculate_loss(self,X,X_new,Y,Y_new,Pred_t,ADE_loss,ADE_loss_barrier,ADE_loss_adv_future,ADE_loss_adv_future_barrier,collision_loss,collision_loss_barrier,fake_collision_loss,hide_collision_loss,log_barrier,ADVDO_barrier,spline_barrier,distance_threshold,log_value,spline_data):
+    def calculate_loss(self,X,X_new,Y,Y_new,Pred_t,ADE_loss,ADE_loss_barrier,ADE_loss_adv_future,ADE_loss_adv_future_barrier,collision_loss,collision_loss_barrier,fake_collision_loss,fake_collision_loss_barrier,hide_collision_loss,hide_collision_loss_barrier,log_barrier,ADVDO_barrier,spline_barrier,distance_threshold,log_value,spline_data):
 
         # Add  regularization loss to adversarial input using barrier function
         if log_barrier:
@@ -694,56 +706,79 @@ class Adversarial(perturbation_template):
 
         # Calculate the total loss
         if ADE_loss:
-            losses = self.ADE_loss_function(self, Y, Pred_t)
+            losses = self.ADE_loss_function(Y, Pred_t)
         elif ADE_loss_barrier:
-            losses = self.ADE_loss_function(self, Y, Pred_t) + barrier_output
+            losses = self.ADE_loss_function(Y, Pred_t) + barrier_output
         elif ADE_loss_adv_future:
-            losses = self.ADE_adv_future(self, Y_new, Pred_t)
+            losses = self.ADE_adv_future_pred(Y_new, Pred_t) - self.ADE_adv_future_GT(Y_new, Y)
         elif ADE_loss_adv_future_barrier:
-            losses = self.ADE_adv_future(self, Y_new, Pred_t) + barrier_output
+            losses = self.ADE_adv_future_pred(Y_new, Pred_t) - self.ADE_adv_future_GT(Y_new, Y) + barrier_output
         elif collision_loss:
             losses = -self.collision_loss_function(Y, Pred_t)
         elif collision_loss_barrier:
             losses = -self.collision_loss_function(Y, Pred_t) + barrier_output
         elif fake_collision_loss:
-            losses = -self.collision_loss_function(Y, Pred_t) + barrier_output 
+            losses = -self.collision_loss_function(Y, Pred_t) - self.ADE_adv_future_GT(Y_new, Y)
+        elif fake_collision_loss_barrier:
+            losses = -self.collision_loss_function(Y, Pred_t) - self.ADE_adv_future_GT(Y_new, Y) + barrier_output 
         elif hide_collision_loss:
-            losses = -self.collision_loss_adv_future(Y_new, Y) + barrier_output 
+            losses = -self.collision_loss_adv_future(Y_new, Y) - self.ADE_loss_function(Y, Pred_t) 
+        elif hide_collision_loss_barrier:
+            losses = -self.collision_loss_adv_future(Y_new, Y) - self.ADE_loss_function(Y, Pred_t) + barrier_output 
 
         return losses
     
     def ADE_loss_function(self, Y, Pred_t):
-        return torch.mean(torch.mean(torch.linalg.norm(Y[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
+        # index 0 is the target agent -> norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
+        return torch.mean(torch.mean(torch.linalg.norm(Y[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1) 
     
-    def ADE_adv_future(self, Y_new, Pred_t):
-        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
+    def ADE_adv_future_pred(self, Y_new, Pred_t):
+        # index 0 is the target agent -> norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
+        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1) 
+    
+    def ADE_adv_future_GT(self, Y_new, Y):
+        # index 0 is the target agent -> norm is over the positions -> torch.mean is over the time steps 
+        return torch.mean(torch.linalg.norm(Y_new[:,0,:,:] - Y[:,0,:,:], dim=-1 , ord = 2), dim=-1) 
     
     def collision_loss_function(self, Y, Pred_t):
+        # index 1 is the ego agent -> norm is over the positions -> inner torch.min is over the time steps -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Y[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
     
     def collision_loss_adv_future(self, Y_new, Y):
+        # index 0 is target agent, index 1 is the ego agent -> norm is over the positions -> inner torch.min is over the time steps -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Y[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
 
     def barrier_log_function(self, distance_threshold, X_new, X, log_value):
+        # index 0 is the target agent -> norm is over the positions
         barrier_norm = torch.norm(X_new[:,0,:,:] - X[:,0,:,:], dim = -1)
+        # log barrier function
         barrier_log = torch.log(distance_threshold - barrier_norm)
+        # normalize the log barrier function
         barrier_log_new = barrier_log / torch.log(torch.tensor(log_value))
+        # mean over the time steps
         barrier_output = torch.mean(barrier_log_new,dim=-1)
         return barrier_output
     
     def AVDDO_barrier_function(self, X_new, X, distance_threshold_past):
+        # Other paper less relevant
         barrier_norm = torch.norm(X_new[:,0,:,:] - X[:,0,:,:], dim = -1)
         barrier_output = -((barrier_norm / distance_threshold_past) - torch.sigmoid(barrier_norm / distance_threshold_past) + 0.5).sum(dim=-1)
         return barrier_output
     
     def barrier_log_function_spline(self, distance_threshold_past, X_new, spline_data, spline_value_past):
+        # index 0 is the target agent -> compare all points of agent with spline
         distance = torch.cdist(X_new[:,0,:,:], spline_data, p=2)
+        # find the closest point on the spline
         min_indices = torch.argmin(distance, dim=-1)
         closest_points = torch.gather(spline_data.unsqueeze(1).expand(-1, X_new.shape[2], -1, -1), 2, min_indices.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, spline_data.size(-1)))
         closest_points = closest_points.squeeze(2)
+        # norm is over the positions
         barrier_norm = torch.norm(X_new[:,0,:,:] - closest_points, dim = -1)
+        # log barrier function
         barrier_output = torch.log(distance_threshold_past - barrier_norm)
+        # normalize the log barrier function
         barrier_log_new = barrier_output / torch.log(torch.tensor(spline_value_past))
+        # mean over the time steps
         barrier_output = torch.mean(barrier_log_new,dim=-1)
         return barrier_output
     
@@ -758,12 +793,15 @@ class Adversarial(perturbation_template):
         
         return X_new_pert, Y_new_pert, Pred_t
     
-    def plot_results(self, X, X_new_pert, Y, Y_new_pert, Pred_t, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width):
+    def plot_results(self, X, X_new_pert, Y, Y_new_pert, Pred_t, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width,mask_values_X,mask_values_Y):
         # Plot the loss over the iterations
         if plot_loss:
+            loss_store = np.array(loss_store)
             plt.figure(0)
-            plt.plot(loss_store, marker='o', linestyle='-')
+            for i in range(loss_store.shape[1]):
+                plt.plot(loss_store[:,i], marker='o', linestyle='-',label=f'Sample {i}')
             plt.title('Loss for samples')
+            plt.legend()
             plt.xlabel('Iteration')
             plt.ylabel('Loss')
             plt.grid(True)
@@ -806,15 +844,16 @@ class Adversarial(perturbation_template):
                     if j != X.shape[1]-1:
                         agent = 'target'
                         data = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
-                        interpolated_data = self.interpolate_points(data, num_interpolations,agent)
+                        interpolated_data = self.interpolate_points(data, num_interpolations,agent,mask_values_X[i],mask_values_Y[i])
                         interpolated_data_tar.append(interpolated_data)
 
+                        agent = 'adv'
                         data_adv = np.concatenate((X_new_pert[i,j,:,:],Pred_t[i,:,:]),axis=0)
                         interpolated_data_adv = self.interpolate_points(data_adv, num_interpolations,agent)
                         interpolated_data_tar_adv.append(interpolated_data_adv)
 
                         if future_action:
-                            data_adv_future = np.concatenate((Y_new_pert[i,j,:,:],Pred_t[i,:,:]),axis=0)
+                            data_adv_future = np.concatenate((X_new_pert[i,j,:,:],Y_new_pert[i,j,:,:]),axis=0)
                             interpolated_data_adv_future = self.interpolate_points(data_adv_future, num_interpolations,agent)
                             interpolated_data_tar_adv_future.append(interpolated_data_adv_future)
 
@@ -977,10 +1016,26 @@ class Adversarial(perturbation_template):
             rectangle_data[i].set_angle(angle)
 
     
-    def interpolate_points(self,data,num_interpolations,agent):
+    def interpolate_points(self,data,num_interpolations,agent,mask_values_X = False,mask_values_Y = False):
         # Flip agent to make x values monotonic
+        monotonic = self.is_monotonic(data)
         if agent == 'target':
-            new_data = np.flip(np.flip(data, axis=1),axis=0)
+            if mask_values_X or mask_values_Y:
+                if monotonic:
+                    new_data = np.flip(data, axis=0)
+                else:
+                    new_data = np.flip(np.flip(data, axis=1),axis=0)
+                # add offset because some valus are the same
+                for i in range(1,new_data.shape[0]):
+                    new_data[i,0] += 0.0001*i
+            else:
+                new_data = np.flip(np.flip(data, axis=1),axis=0)
+            spline = CubicSpline(new_data[:, 0], new_data[:, 1])
+        elif agent == 'adv':
+            if monotonic:
+                new_data = np.flip(data, axis=0)
+            else:
+                new_data = np.flip(np.flip(data, axis=1),axis=0)
             spline = CubicSpline(new_data[:, 0], new_data[:, 1])
         else:
             new_data = data
@@ -1000,10 +1055,22 @@ class Adversarial(perturbation_template):
         interpolated_points = np.array(interpolated_points)
 
         if agent == 'target':
-            interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
+            if mask_values_X or mask_values_Y:
+                interpolated_points = np.flip(interpolated_points, axis=0)
+            else:
+                interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
+        elif agent == 'adv':
+            interpolated_points = np.flip(interpolated_points, axis=0)
 
         return interpolated_points
 
+    def is_monotonic(self, data):
+        # Check for monotonic increasing
+        is_increasing = np.all(data[:-1,0] <= data[1:,0])
+        # Check for monotonic decreasing
+        is_decreasing = np.all(data[:-1,0] >= data[1:,0])
+
+        return is_increasing or is_decreasing
     
     def adversarial_smoothing(self, X_pert, X, Y_pert_prediction, Y, T, Domain):
         X_pert_copy = X_pert.copy()
@@ -1138,7 +1205,7 @@ class Adversarial(perturbation_template):
 
         '''
 
-        self.batch_size = 1
+        self.batch_size = 2
 
         # TODO: Implement this function, you can decide here if you somehow rely on self.pert_model, if possible, or instead use a fixed value
 
