@@ -13,6 +13,7 @@ import matplotlib.patches as patches
 from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import matplotlib.lines as mlines
+from matplotlib.patches import FancyArrowPatch
 
 class Adversarial(perturbation_template):
     def check_and_extract_kwargs(self, kwargs):
@@ -145,12 +146,16 @@ class Adversarial(perturbation_template):
         plot_spline = False
 
         # Plot the loss over the iterations
-        plot_loss = True
+        plot_loss = False
         loss_store = []
 
         # Plot the adversarial scene
-        static_adv_scene = True
+        static_adv_scene = False
         animated_adv_scene = True
+
+        # Car size
+        car_length = 4.1
+        car_width = 1.7
 
         # validation settings
         self.validate_plot_settings(plot_input, plot_spline)
@@ -177,20 +182,18 @@ class Adversarial(perturbation_template):
 
         # Make copy of the original data and remove nan from input
         Y_shape = Y.shape
-        X_copy = X.copy()
         Y = self.remove_nan_values(Y)
-        Y_copy = Y.copy()
 
         # Select loss function ()
         #ADE loss
-        ADE_loss = False
+        ADE_loss = True
         ADE_loss_barrier = False
         ADE_loss_adv_future = False
         ADE_loss_adv_future_barrier = False
 
         # Collision loss
         collision_loss = False
-        collision_loss_barrier = True
+        collision_loss_barrier = False
         fake_collision_loss = False
         hide_collision_loss = False
 
@@ -227,7 +230,11 @@ class Adversarial(perturbation_template):
         
         # Create data and plot data if required
         X, Y, agent_order, spline_data = self.create_data_plot(X, Y, agent, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline, plot_input,plot_spline)
-        
+
+        # Make copy of the original data for plots
+        X_copy = X.copy()
+        Y_copy = Y.copy()
+
         # Convert to tensor
         X, Y, spline_data = self.convert_to_tensor(X, Y, spline_data)
 
@@ -331,12 +338,14 @@ class Adversarial(perturbation_template):
                 Y_copy, 
                 Y_new_pert, 
                 Pred_t,
-                plot_loss, 
-                loss_store, 
+                loss_store,
+                plot_loss,  
                 future_action,
                 static_adv_scene,
-                animated_adv_scene
-                )
+                animated_adv_scene,
+                car_length,
+                car_width
+            )
 
         # Return Y to old shape
         nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
@@ -396,7 +405,7 @@ class Adversarial(perturbation_template):
         
         # Iterate over each example in the data
         for i in range(X.shape[0]):
-            plt.figure(figsize=(20,10))
+            plt.figure(figsize=(18,12))
             # Plot the spline data
             if plot_spline:
                 plt.plot(spline_data[i,:,0], spline_data[i,:,1], marker='o', color='m', label='Spline plot',markersize=4,alpha=0.2)
@@ -408,66 +417,27 @@ class Adversarial(perturbation_template):
                     plt.plot(X[i,j,:,0], X[i,j,:,1], linestyle='-',linewidth=3, color='y', label='Past target agent')
                     plt.plot(Y[i,j,:-1,0], Y[i,j,:-1,1], linestyle='dashed',linewidth=3, color='y', label='Future target agent')
                     plt.plot((X[i,j,-1,0],Y[i,j,0,0]), (X[i,j,-1,1],Y[i,j,0,1]), linestyle='dashed',linewidth=3, color='y')
+                    plt.annotate('', xy=(Y[i,j,-1,0], Y[i,j,-1,1]), xytext=(Y[i,j,-2,0], Y[i,j,-2,1]),
+                                size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="y",lw=3))
                 else:
                     plt.plot(X[i,j,:,0], X[i,j,:,1], linestyle='-',linewidth=3, color='b',label='Past ego agent')
                     plt.plot(Y[i,j,:-1,0], Y[i,j,:-1,1], linestyle='dashed',linewidth=3, color='b', label='Future ego agent')
                     plt.plot((X[i,j,-1,0],Y[i,j,0,0]), (X[i,j,-1,1],Y[i,j,0,1]),linewidth=3, linestyle='dashed', color='b')
+                    plt.annotate('', xy=(Y[i,j,-1,0], Y[i,j,-1,1]), xytext=(Y[i,j,-2,0], Y[i,j,-2,1]),
+                            size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="b",lw=3))
             
             # Set the plot limits and road lines
             offset = 10
-            min_value_x = np.inf
-            max_value_x = -np.inf
-            min_value_y = np.inf
-            max_value_y = -np.inf
+            min_value_x, max_value_x, min_value_y, max_value_y = self.find_limits_data(X, Y, i)
 
-            # Find plot limits
-            for j in range(X.shape[1]):
-                min_value_x = min(min_value_x, np.min(X[i,j,:,0]))
-                min_value_x = min(min_value_x, np.min(Y[i,j,:,0]))
-
-                max_value_x = max(max_value_x, np.max(X[i,j,:,0]))
-                max_value_x = max(max_value_x, np.max(Y[i,j,:,0]))
-
-                min_value_y = min(min_value_y, np.min(X[i,j,:,1]))
-                min_value_y = min(min_value_y, np.min(Y[i,j,:,1]))
-
-                max_value_y = max(max_value_y, np.max(X[i,j,:,1]))
-                max_value_y = max(max_value_y, np.max(Y[i,j,:,1]))
-
-            # Plot the arrow 
-            plt.annotate('', xy=(Y[i,0,-1,0], Y[i,0,-1,1]), xytext=(Y[i,0,-2,0], Y[i,0,-2,1]),
-                 size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="y",lw=3))
-            plt.annotate('', xy=(Y[i,1,-1,0], Y[i,1,-1,1]), xytext=(Y[i,1,-2,0], Y[i,1,-2,1]),
-                size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="b",lw=3))
-
-            # Plot the dashed road lines
-            y_dash = [0,0]
-            x_min_dash = [min_value_x - offset, 4.5]
-            x_max_dash = [-4.5, max_value_x + offset]
-
-            x_dash = [0,0]
-            y_min_dash = [min_value_y - 2 * offset, 4.5]
-            y_max_dash = [-4.5, max_value_y + 2 * offset]
-
-            plt.hlines(y_dash,x_min_dash,x_max_dash, linestyle='dashed', colors='k',linewidth=0.75)
-            plt.vlines(x_dash,y_min_dash,y_max_dash, linestyle='dashed', colors='k',linewidth=0.75)
-            
-            # Plot the solid road lines
-            y_solid = [-3.5, -3.5, 3.5, 3.5]
-            x_min_solid = [min_value_x - offset, 3.5, min_value_x - offset, 3.5]
-            x_max_solid = [-3.5, max_value_x + offset, -3.5, max_value_x + offset]
-
-            x_solid = [-3.5, 3.5, 3.5, -3.5]
-            y_min_solid = [min_value_y - 2 * offset, min_value_y - 2 * offset, 3.5, 3.5]
-            y_max_solid = [-3.5, -3.5, max_value_y + 2 * offset, max_value_y + 2 * offset]
-
-            plt.hlines(y_solid,x_min_solid,x_max_solid, linestyle="solid", colors='k')
-            plt.vlines(x_solid,y_min_solid,y_max_solid, linestyle="solid", colors='k')
+            # Plot the road lines
+            self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,plt)
 
             # Set the plot limits
             plt.xlim(min_value_x - offset, max_value_x + offset)  
             plt.ylim(min_value_y - 2 * offset, max_value_y + 2 * offset)
             plt.axis('equal')
+            plt.title(f'Example {i} of batch - Scene plot')
             plt.legend()
             plt.show()
 
@@ -492,6 +462,53 @@ class Adversarial(perturbation_template):
         Y = Y[:, agent_order, :, :]
 
         return X, Y, agent_order
+    
+    def find_limits_data(self, X, Y, index):
+        min_value_x = np.inf
+        max_value_x = -np.inf
+        min_value_y = np.inf
+        max_value_y = -np.inf
+
+        # Find plot limits
+        for j in range(X.shape[1]):
+            min_value_x = min(min_value_x, np.min(X[index,j,:,0]))
+            min_value_x = min(min_value_x, np.min(Y[index,j,:,0]))
+
+            max_value_x = max(max_value_x, np.max(X[index,j,:,0]))
+            max_value_x = max(max_value_x, np.max(Y[index,j,:,0]))
+
+            min_value_y = min(min_value_y, np.min(X[index,j,:,1]))
+            min_value_y = min(min_value_y, np.min(Y[index,j,:,1]))
+
+            max_value_y = max(max_value_y, np.max(X[index,j,:,1]))
+            max_value_y = max(max_value_y, np.max(Y[index,j,:,1]))
+
+        return min_value_x, max_value_x, min_value_y, max_value_y
+    
+    def plot_road_lines(self, min_value_x, max_value_x, min_value_y, max_value_y, offset,figure_input):
+        # Plot the dashed road lines
+        y_dash = [0,0]
+        x_min_dash = [min_value_x - offset, 4.5]
+        x_max_dash = [-4.5, max_value_x + offset]
+
+        x_dash = [0,0]
+        y_min_dash = [min_value_y - 2 * offset, 4.5]
+        y_max_dash = [-4.5, max_value_y + 2 * offset]
+
+        figure_input.hlines(y_dash,x_min_dash,x_max_dash, linestyle='dashed', colors='k',linewidth=0.75)
+        figure_input.vlines(x_dash,y_min_dash,y_max_dash, linestyle='dashed', colors='k',linewidth=0.75)
+        
+        # Plot the solid road lines
+        y_solid = [-3.5, -3.5, 3.5, 3.5]
+        x_min_solid = [min_value_x - offset, 3.5, min_value_x - offset, 3.5]
+        x_max_solid = [-3.5, max_value_x + offset, -3.5, max_value_x + offset]
+
+        x_solid = [-3.5, 3.5, 3.5, -3.5]
+        y_min_solid = [min_value_y - 2 * offset, min_value_y - 2 * offset, 3.5, 3.5]
+        y_max_solid = [-3.5, -3.5, max_value_y + 2 * offset, max_value_y + 2 * offset]
+
+        figure_input.hlines(y_solid,x_min_solid,x_max_solid, linestyle="solid", colors='k')
+        figure_input.vlines(x_solid,y_min_solid,y_max_solid, linestyle="solid", colors='k')
     
     def spline_data(self, X, Y, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline):
         if spline == False:
@@ -741,7 +758,7 @@ class Adversarial(perturbation_template):
         
         return X_new_pert, Y_new_pert, Pred_t
     
-    def plot_results(self, X_copy, X_new_pert, Y_copy, Y_new_pert, Pred_t, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene):
+    def plot_results(self, X, X_new_pert, Y, Y_new_pert, Pred_t, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width):
         # Plot the loss over the iterations
         if plot_loss:
             plt.figure(0)
@@ -754,355 +771,238 @@ class Adversarial(perturbation_template):
 
         # Plot the static adversarial scene
         if static_adv_scene:
-            for i in range(X_copy.shape[0]):
-                plt.figure()
-                plt.plot(X_copy[i,0,:,0], X_copy[i,0,:,1], marker='o', linestyle='-', color='b', label='Past original adverserial')
-                plt.plot(X_copy[i,1,:,0], X_copy[i,1,:,1], marker='o', linestyle='-', color='g',label='Past original other')
-                plt.plot(X_new_pert[i,0,:,0], X_new_pert[i,0,:,1], marker='o', linestyle='-', color='r', label='Past perturbed adverserial')
-                plt.plot(Pred_t[i,:,0], Pred_t[i,:,1], marker='o', linestyle='-', color='c', label='Future adversarial predict')
-                plt.plot([X_new_pert[i,0,-1,0],Pred_t[i,0,0]],[X_new_pert[i,0,-1,1],Pred_t[i,0,1]], marker='o', linestyle='-', color='c')
-                plt.plot(Y_copy[i,0,:,0], Y_copy[i,0,:,1], marker='o', linestyle='-', color='m',label='Future original adversarial')
-                plt.plot([X_copy[i,0,-1,0],Y_copy[i,0,0,0]],[X_copy[i,0,-1,1],Y_copy[i,0,0,1]], marker='o', linestyle='-', color='m')
-                plt.plot(Y_copy[i,1,:,0], Y_copy[i,1,:,1], marker='o', linestyle='-', color='y', label='Future original other')
-                plt.plot([X_copy[i,1,-1,0],Y_copy[i,1,0,0]],[X_copy[i,1,-1,1],Y_copy[i,1,0,1]], marker='o', linestyle='-', color='y')
+            for i in range(X.shape[0]):
+                plt.figure(figsize=(18,12))
+                
+                # Plot the data
+                self.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,plt,i)
+                    
+                # Set the plot limits and road lines
+                offset = 10
+                min_value_x, max_value_x, min_value_y, max_value_y = self.find_limits_data(X, Y, i)
 
-                if future_action:
-                    plt.plot(Y_new_pert[i,0,:,0], Y_new_pert[i,0,:,1], marker='o', linestyle='-', color='k', label='Future adversarial expected')
-                    plt.plot([X_new_pert[i,0,-1,0],Y_new_pert[i,0,0,0]],[X_new_pert[i,0,-1,1],Y_new_pert[i,0,0,1]], marker='o', linestyle='-', color='k')
+                # Plot the road lines
+                self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,plt)
+
+                # Set the plot limits
+                plt.xlim(min_value_x - offset, max_value_x + offset)  
+                plt.ylim(min_value_y - 2 * offset, max_value_y + 2 * offset)
                 plt.axis('equal')
+                plt.title(f'Example {i} of batch - Adversarial scene plot')
                 plt.legend()
                 plt.show()
 
         # Plot the animated adversarial scene  
         if animated_adv_scene:
-            for i in range(X_copy.shape[0]):
-                #smooth line
+            for i in range(X.shape[0]):
                 num_interpolations = 5
+                interpolated_data_tar = []
+                interpolated_data_tar_adv = []
+                interpolated_data_tar_adv_future = []
+                interpolated_data_ego = []
 
-                ego_original = np.concatenate((X_copy[i,0,:,:],Y_eval[i,0,:,:]),axis=0)
-                ego_original, flip_value = self.delete_after_flip_x(ego_original)
-                ego_original, length = self.interpolate_points(ego_original,flip_value, num_interpolations,X_copy.shape[2])
+                # Interpolate the data to smooth the animation
+                for j in range(X.shape[1]):
+                    if j != X.shape[1]-1:
+                        agent = 'target'
+                        data = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
+                        interpolated_data = self.interpolate_points(data, num_interpolations,agent)
+                        interpolated_data_tar.append(interpolated_data)
 
-                x_1 = ego_original[:,0]
-                y_1 = ego_original[:,1]
+                        data_adv = np.concatenate((X_new_pert[i,j,:,:],Pred_t[i,:,:]),axis=0)
+                        interpolated_data_adv = self.interpolate_points(data_adv, num_interpolations,agent)
+                        interpolated_data_tar_adv.append(interpolated_data_adv)
 
-                tar_original = np.concatenate((X_copy[i,1,:,:],Y_eval[i,1,:,:]),axis=0)
-                tar_original, flip_value = self.delete_after_flip_x(tar_original)
-                tar_original,_ = self.interpolate_points(tar_original,flip_value, num_interpolations,X_copy.shape[2])
+                        if future_action:
+                            data_adv_future = np.concatenate((Y_new_pert[i,j,:,:],Pred_t[i,:,:]),axis=0)
+                            interpolated_data_adv_future = self.interpolate_points(data_adv_future, num_interpolations,agent)
+                            interpolated_data_tar_adv_future.append(interpolated_data_adv_future)
 
-                x_2 = tar_original[:,0]
-                y_2 = tar_original[:,1]
+                    else:
+                        agent = 'ego'
+                        data = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
+                        interpolated_data = self.interpolate_points(data, num_interpolations,agent)
+                        interpolated_data_ego.append(interpolated_data)
 
-                adversarial = np.concatenate((X_new_pert[i,0,:,:],Pred_t[i,:,:]),axis=0)
-                adversarial, flip_value = self.delete_after_flip_x(adversarial)
-                adversarial, _ = self.interpolate_points(adversarial,flip_value, num_interpolations,X_copy.shape[2])
-
-                x_3 = adversarial[:,0]
-                y_3 = adversarial[:,1]
-
-                rect_width = 4.1
-                rect_height = 1.7
-                rect1 = patches.Rectangle((0, 0), rect_width, rect_height, edgecolor='none', facecolor='blue',label='Ego-agent')
-                rect2 = patches.Rectangle((0, 0), rect_width, rect_height, edgecolor='none', facecolor='green',label='Target-agent')
-                rect3 = patches.Rectangle((0, 0), rect_width, rect_height, edgecolor='none', facecolor='red',label='Adversarial agent')
-
+                # initialize the plot
                 fig = plt.figure(figsize = (18,12), dpi=1920/16)
+                fig.suptitle(f'Example {i} of batch - Adversarial scene plot animated')
 
                 ax = fig.add_subplot(2,2,1)
                 ax1 = fig.add_subplot(2,2,2)
                 ax2 = fig.add_subplot(2,1,2)
-                # line1, = ax.plot(x_1, y_1, color='b',label='Ego-agent')
-                # line2, = ax.plot(x_2, y_2, color='g',label='Target-agent')
-                # line3, = ax.plot(x_3, y_3, color='r',label='Adversarial agent')
 
-                ax.add_patch(rect1)
-                ax.add_patch(rect2)
-                ax.add_patch(rect3)
+                # initialize the cars
+                rectangles_tar = self.add_rectangles(ax, interpolated_data_tar, 'yellow', 'Target-agent', car_length, car_width,alpha=1)
+                rectangles_ego = self.add_rectangles(ax, interpolated_data_ego, 'blue', 'Ego-agent', car_length, car_width,alpha=1)
 
-                # def update(num, x_1, y_1, x_2, y_2, x_3, y_3, line1,line2,line3):
+                if future_action:
+                    rectangles_tar_adv_future = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial agent perturb future', car_length, car_width,alpha=1)
+                    rectangles_tar_adv = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial agent', car_length, car_width, alpha=0.3)
+                else: 
+                    rectangles_tar_adv = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial agent', car_length, car_width, alpha=1)
+               
+                # Function to update the animated plot
+                def update(num):
+                    # Update the location of the car
+                    self.update_box_position(interpolated_data_tar,rectangles_tar, car_length, car_width,num)
+                    self.update_box_position(interpolated_data_tar_adv,rectangles_tar_adv, car_length, car_width,num) 
+                    self.update_box_position(interpolated_data_ego,rectangles_ego, car_length, car_width,num)
 
-                def update(num, x_1, y_1, x_2, y_2, x_3, y_3):
-                    # if num < length:
-                    #     line1.set_data(x_1[:num], y_1[:num])
-                    #     line2.set_data(x_2[:num], y_2[:num])
-                    #     line3.set_data(x_3[:num], y_3[:num])
-                    # if num >= length:
-                    #     line1.set_linestyle('dashed')
-                    #     line2.set_linestyle('dashed')
-                    #     line3.set_linestyle('dashed')
-                    #     line1.set_data(x_1[length:num], y_1[length:num])
-                    #     line2.set_data(x_2[length:num], y_2[length:num])
-                    #     line3.set_data(x_3[length:num], y_3[length:num])
-                    #     ax.plot(ego_original[:length,0], ego_original[:length,1], color='b')
-                    #     ax.plot(tar_original[:length,0], tar_original[:length,1], color='g')
-                    #     ax.plot(adversarial[:length,0], adversarial[:length,1], color='r')
-                        
-
-                    # Set position based on bottom left corner (assuming this is your anchor point)
-
-                    # Update rectangle 1 (ego-original)
-                    dx = x_1[num + 1] - x_1[num]
-                    dy = y_1[num + 1] - y_1[num]
-                    angle_rad = np.arctan2(dy, dx)
-
-                    shift_x_1 = (rect_height / 2) * np.sin(angle_rad) - (rect_width / 2) * np.cos(angle_rad)
-                    shift_y_1 = -(rect_height / 2) * np.cos(angle_rad) - (rect_width / 2) * np.sin(angle_rad)
-                    rect1.set_xy([x_1[num-1] + shift_x_1, y_1[num-1] + shift_y_1])
-                    angle = np.arctan2(dy, dx) * (180 / np.pi)  # Convert radians to degrees
-                    rect1.set_angle(angle)
-
-                    #Calculate direction vector
-                    dx = x_2[num + 1] - x_2[num]
-                    dy = y_2[num + 1] - y_2[num]
-
-                    angle_rad = np.arctan2(dy, dx) 
-
-                    shift_x_2 = (rect_height/2) * np.sin(angle_rad) - (rect_width/2) * np.cos(angle_rad)
-                    shift_y_2 = -(rect_height/2) * np.cos(angle_rad) - (rect_width/2) * np.sin(angle_rad )
-
-                    rect2.set_xy([x_2[num-1] + shift_x_2, y_2[num-1] + shift_y_2])
-                    dx = x_2[num + 1] - x_2[num]
-                    dy = y_2[num + 1] - y_2[num]
-                    angle = np.arctan2(dy, dx) * (180 / np.pi)  # Convert radians to degrees
-
-                    # Apply rotation around the bottom left corner
-                    rect2.set_angle(angle)
-
-                    # Calculate direction vector for adversarial trajectory
-                    dx = x_3[num + 1] - x_3[num]
-                    dy = y_3[num + 1] - y_3[num]
-                    angle_rad = np.arctan2(dy, dx)
-
-                    # Update rectangle 3 (adversarial)
-                    shift_x_3 = (rect_height / 2) * np.sin(angle_rad) - (rect_width / 2) * np.cos(angle_rad)
-                    shift_y_3 = -(rect_height / 2) * np.cos(angle_rad) - (rect_width / 2) * np.sin(angle_rad)
-                    rect3.set_xy([x_3[num-1] + shift_x_3, y_3[num-1] + shift_y_3])
-                    angle = np.arctan2(dy, dx) * (180 / np.pi)  # Convert radians to degrees
-                    rect3.set_angle(angle)
+                    if future_action:
+                        self.update_box_position(interpolated_data_tar_adv_future,rectangles_tar_adv_future, car_length, car_width,num)
 
                     return 
+                
+                # Set the plot limits and road lines
+                min_value_x, max_value_x, min_value_y, max_value_y = self.find_limits_data(X, Y, i)
 
-                min_value_x = min(np.min(x_1), np.min(x_2), np.min(x_3))
-                max_value_x = max(np.max(x_1), np.max(x_2), np.max(x_3))
-                min_value_y = min(np.min(y_1), np.min(y_2), np.min(y_3))
-                max_value_y = max(np.max(y_1), np.max(y_2), np.max(y_3))
-
+                # Plot the road lines
                 offset = 10
+                self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,ax)
 
-                y1 = [0,0]
-                x_min1 = [min_value_x - offset, +4.5]
-                x_max1 = [-4.5, max_value_x + offset]
-
-                x1 = [0,0]
-                y_min1 = [min_value_y - 2 * offset, 4.5]
-                y_max1 = [-4.5, max_value_y + 2 * offset]
-                
-                ax.hlines(y1,x_min1,x_max1, linestyle='dashed', colors='k',linewidth=0.75)
-                ax.vlines(x1,y_min1,y_max1, linestyle='dashed', colors='k',linewidth=0.75)
-
-
-                y = [-3.5, -3.5, 3.5, 3.5]
-
-                x_min = [min_value_x - offset, 3.5, min_value_x - offset, 3.5]
-                x_max = [-3.5, max_value_x + offset, -3.5, max_value_x + offset]
-
-                x = [-3.5, 3.5, 3.5, -3.5]
-
-                y_min = [min_value_y - 2 * offset, min_value_y - 2 * offset, 3.5, 3.5]
-                y_max = [-3.5, -3.5, max_value_y + 2 * offset, max_value_y + 2 * offset]
-
-                ax.hlines(y,x_min,x_max, linestyle="solid", colors='k')
-                ax.vlines(x,y_min,y_max, linestyle="solid", colors='k')
-                
+                # Set the plot limits
                 ax.set_aspect('equal')
-                ax.set_xlim(min_value_x - offset, max_value_x + offset)   # Set x-axis limits
-                ax.set_ylim(min_value_y - 2 * offset, max_value_y + 2 * offset)
+                ax.set_xlim(min_value_x - offset, max_value_x + offset) 
+                ax.set_ylim(min_value_y - offset, max_value_y + 1.5* offset)
                 ax.legend()
                 ax.set_title('Animation of the adversarial scene')
-
-                # ani = animation.FuncAnimation(fig, update, len(x_1)-1, fargs=[x_1, y_1, x_2, y_2, x_3, y_3, line1, line2, line3],
-                #                             interval=100/num_interpolations, blit=False)
                 
-                ani = animation.FuncAnimation(fig, update, len(x_1)-1, fargs=[x_1, y_1, x_2, y_2, x_3, y_3],
+                ani = animation.FuncAnimation(fig, update, len(interpolated_data_tar[0])-1,
                                             interval=100/num_interpolations, blit=False)
                 
-                ax1.plot(X_new_pert[i,0,:,0], X_new_pert[i,0,:,1], linestyle='-', color='r',label='Adversarial agent')
-                ax1.plot(X_copy[i,1,:,0], X_copy[i,1,:,1], linestyle='-', color='g',label='Target agent')
-                ax1.plot(Y_eval[i,1,:-1,0], Y_eval[i,1,:-1,1], linestyle='dashed', color='g',alpha=0.7)
-                ax1.plot([X_copy[i,1,-1,0],Y_eval[i,1,0,0]],[X_copy[i,1,-1,1],Y_eval[i,1,0,1]], linestyle='dashed', color='g',alpha=0.7)
-                ax1.plot(X_new_pert[i,0,:,0], X_new_pert[i,0,:,1], linestyle='dotted', color='r')
-                ax1.plot(Pred_t[i,:-1,0], Pred_t[i,:-1,1], linestyle='dashdot', color='r',alpha=0.7)
-                ax1.plot([X_new_pert[i,0,-1,0],Pred_t[i,0,0]],[X_new_pert[i,0,-1,1],Pred_t[i,0,1]], linestyle='dashdot', color='r',alpha=0.7)
+
+                # Plot the second Figure
+                self.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,ax1,i)
+
+                # Plot the road lines
+                self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,ax1)
+
+                # Set the plot limits
                 ax1.set_aspect('equal')
+                ax1.set_xlim(1, max_value_x + 0.5)  
+                ax1.set_ylim(-2, max_value_y + 0.5)
+                ax1.set_title('Zoomed adversarial scene plot')
 
-                # Second legend 'imaginary' lines
-                line_solid = mlines.Line2D([], [], color='black', linestyle='-', label=f'Benign past')
-                line_dashed = mlines.Line2D([], [], color='black', linestyle='dashed', label=f'Benign future')
-                line_dotted = mlines.Line2D([], [], color='black', linestyle='dotted', label=f'Adversarial past')
-                line_dashdot = mlines.Line2D([], [], color='black', linestyle='dashdot', label=f'Adversarial future')
+                # Plot the third Figure
+                self.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,ax2,i)
 
-                leg1 = ax1.legend()
-                leg2 = ax1.legend(handles=[line_solid, line_dashed,line_dotted,line_dashdot], loc='best')
-                leg2.set_frame_on(False)
-                ax1.add_artist(leg1)
-                ax1.set_title('Adversarial past scene')
+                # Plot the road lines
+                self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,ax2)
 
-                ax1.hlines(y1,x_min1,x_max1, linestyle='dashed', colors='k',linewidth=0.75)
-                ax1.vlines(x1,y_min1,y_max1, linestyle='dashed', colors='k',linewidth=0.75)
+                # Plot the rectangle for zoom
+                ax2.add_patch(patches.Rectangle((1, -2), max_value_x + 0.5 - 1, max_value_y + 0.5 + 2, edgecolor='black', facecolor='none', linestyle='dashed', linewidth=1))
 
-                ax1.hlines(y,x_min,x_max, linestyle="solid", colors='k')
-                ax1.vlines(x,y_min,y_max, linestyle="solid", colors='k')
+                # include pointer
+                # Adding an arrow using FancyArrowPatch
+                arrow = FancyArrowPatch((0.80, 0.40), (0.70, 0.60),
+                                        transform=fig.transFigure,  # Use figure coords
+                                        mutation_scale=20,          # Size of arrow head
+                                        lw=1,                       # Line width
+                                        arrowstyle="-|>",           # Arrow style
+                                        color='black')              # Color of the arrow
 
-                offset = 0.5
-
-                min_x_new = min(np.min(X_copy[i,1,:,0]), np.min(X_new_pert[i,0,:,0]))
-                max_x_new = max(np.max(X_copy[i,1,:,0]), np.max(X_new_pert[i,0,:,1]))
-
-                min_y_new = min(np.min(X_copy[i,1,:,1]), np.min(X_new_pert[i,0,:,0]))
-                max_y_new = max(np.max(X_copy[i,1,:,1]), np.max(X_new_pert[i,0,:,1]))
-
-                ax1.set_xlim(min_x_new - offset, max_x_new + offset)   # Set x-axis limits
-                ax1.set_ylim(min_y_new - offset, max_y_new + offset)
-                
-                ax2.plot(X_copy[i,0,:,0], X_copy[i,0,:,1], linestyle='-', color='b',label='Ego agent')
-                ax2.plot(X_copy[i,1,:,0], X_copy[i,1,:,1], linestyle='-', color='g',label='Target agent')
-                ax2.plot(X_new_pert[i,0,:,0], X_new_pert[i,0,:,1], linestyle='-', color='r',label='Adversarial agent')
-                ax2.plot(Pred_t[i,:-1,0], Pred_t[i,:-1,1], linestyle='dashdot', color='r')
-                ax2.plot([X_new_pert[i,0,-1,0],Pred_t[i,0,0]],[X_new_pert[i,0,-1,1],Pred_t[i,0,1]], linestyle='dashdot', color='r')
-                ax2.plot(Y_eval[i,0,:-1,0], Y_eval[i,0,:-1,1], linestyle='dashed', color='b')
-                ax2.plot([X_copy[i,0,-1,0],Y_eval[i,0,0,0]],[X_copy[i,0,-1,1],Y_eval[i,0,0,1]], linestyle='-', color='b')
-                ax2.plot(Y_eval[i,1,:-1,0], Y_eval[i,1,:-1,1], linestyle='dashed', color='g')
-                ax2.plot([X_copy[i,1,-1,0],Y_eval[i,1,0,0]],[X_copy[i,1,-1,1],Y_eval[i,1,0,1]], linestyle='dashed', color='g')
-
-                ax2.annotate('', xy=(Y_eval[i,0,-1,0], Y_eval[i,0,-1,1]), xytext=(Y_eval[i,0,-2,0], Y_eval[i,0,-2,1]),
-                 size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="b"))
-                ax2.annotate('', xy=(Y_eval[i,1,-1,0], Y_eval[i,1,-1,1]), xytext=(Y_eval[i,1,-2,0], Y_eval[i,1,-2,1]),
-                 size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="g"))
-                ax2.annotate('', xy=(Pred_t[i,-1,0], Pred_t[i,-1,1]), xytext=(Pred_t[i,-2,0], Pred_t[i,-2,1]),
-                 size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="r"))
+                fig.patches.extend([arrow])
 
                 ax2.set_aspect('equal')
                 offset = 2
                 ax2.set_xlim(min_value_x - offset, max_value_x + offset)   # Set x-axis limits
                 ax2.set_ylim(min_value_y - offset, max_value_y + offset)
-                
-                ax2.hlines(y1,x_min1,x_max1, linestyle='dashed', colors='k',linewidth=0.75)
-                ax2.vlines(x1,y_min1,y_max1, linestyle='dashed', colors='k',linewidth=0.75)
-
-                ax2.hlines(y,x_min,x_max, linestyle="solid", colors='k')
-                ax2.vlines(x,y_min,y_max, linestyle="solid", colors='k')
-
                 ax2.legend()
                 ax2.set_title('Adversarial scene static')
 
                 ani.save(f'basic_animation_new-{np.random.rand(1)}.mp4')
-                
-                                
+                          
                 plt.show()
 
-        
-    def delete_after_flip_x(self, arr):
-        # Check if the array is empty or has only one element
-        if arr.shape[0] <= 1:
-            return arr
-
-        # Determine if the array is initially increasing or decreasing along the x-axis
-        initial_trend = arr[0, 0] < arr[1, 0]
-
-        offset = 0.01
-
-        # Iterate through the array along the x-axis starting from the second element
-        for i in range(1, arr.shape[0]):
-            # Check if the trend flips
-            current_trend = arr[i-1, 0] < arr[i, 0]
-            if current_trend != initial_trend:
-                arr1 =  arr[:i]  # Return the array up to the flip point
-                arr2 = arr[i-1:]  # Return the array after the flip point
+    def plot_data_with_adv(self, X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,figure_input,index):
+        for j in range(X.shape[1]):
+            if j != X.shape[1]-1:
+                # Plot target agent
+                figure_input.plot(X[index,j,:,0], X[index,j,:,1], linestyle='-',linewidth=3, color='y', label='Past target agent')
+                figure_input.plot(Y[index,j,:-1,0], Y[index,j,:-1,1], linestyle='dashed',linewidth=3, color='y', label='Future target agent')
+                figure_input.plot((X[index,j,-1,0],Y[index,j,0,0]), (X[index,j,-1,1],Y[index,j,0,1]), linestyle='dashed',linewidth=3, color='y')
+                figure_input.annotate('', xy=(Y[index,j,-1,0], Y[index,j,-1,1]), xytext=(Y[index,j,-2,0], Y[index,j,-2,1]),
+                        size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="y",lw=3))
                 
-                return arr1, arr2
-                    
-        return arr, None  # Return the original array if no flip is found
-    
-        
-                
-    def interpolate_points(self,data,flip_value, num_interpolations,shape):
-        """
-        Interpolate points between each existing point in the dataset.
+                # Plot pertubed history target agent
+                figure_input.plot(X_new_pert[index,j,:,0], X_new_pert[index,j,:,1], linestyle='-',linewidth=3, color='r', label='Past perturbed target agent')
 
-        Parameters:
-            data (numpy.ndarray): Array containing the original dataset with shape (n, 2), where n is the number of points.
-            num_interpolations (int): Number of points to interpolate between each existing point.
+                # Plot the prediction of the target agent
+                figure_input.plot(Pred_t[index,:-1,0], Pred_t[index,:-1,1], linestyle='-',linewidth=4, color='r',alpha = 0.3, label='Future adversarial prediction')
+                figure_input.plot((X_new_pert[index,j,-1,0],Pred_t[index,0,0]), (X_new_pert[index,j,-1,1],Pred_t[index,0,1]), linestyle='-',linewidth=4, color='r',alpha = 0.3)
+                figure_input.annotate('', xy=(Pred_t[index,-1,0], Pred_t[index,-1,1]), xytext=(Pred_t[index,-2,0], Pred_t[index,-2,1]),
+                        size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="r",lw=4,alpha = 0.3))
 
-        Returns:
-            numpy.ndarray: Array containing the interpolated points.
-        """
+                # Plot future perturbed target agent
+                if future_action:
+                    figure_input.plot(Y_new_pert[index,j,:-1,0], Y_new_pert[index,j,:-1,1], linestyle='dashed', color='r',linewidth=3, label='Future perturbed target agent')
+                    figure_input.plot([X_new_pert[index,j,-1,0],Y_new_pert[index,j,0,0]],[X_new_pert[index,j,-1,1],Y_new_pert[index,j,0,1]], linestyle='dashed',linewidth=3, color='r')
+                    figure_input.annotate('', xy=(Y_new_pert[index,j,-1,0], Y_new_pert[index,j,-1,1]), xytext=(Y_new_pert[index,j,-2,0], Y_new_pert[index,j,-2,1]),
+                        size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="r",lw=3))
 
-        Flip = False
-
-        length = None
-
-        if data[0,0] > data[-1,0]:
-            data = np.flip(data, axis=0)
-            Flip = True
-
-        if flip_value is None:
-            # Create a spline interpolation function using all points
-            # spline = interp1d(data[:, 0], data[:, 1], kind = 'cubic',bounds_error=False)
-            spline = CubicSpline(data[:, 0], data[:, 1])
-        else:
-            # Create a spline interpolation function using all points
-            # spline1 = interp1d(data[:, 0], data[:, 1], kind = 'cubic',bounds_error=False)
-            # spline2 = interp1d(flip_value[:, 0], flip_value[:, 1], kind = 'cubic',bounds_error=False)
-            spline1 = CubicSpline(data[:, 0], data[:, 1])
-            spline2 = CubicSpline(flip_value[:, 0], flip_value[:, 1])
-
-        # Interpolate points between each existing point
-        interpolated_points = []
-        if flip_value is None:
-            for i in range(len(data[:, 0]) - 1):
-                x_interval = np.linspace(data[i, 0], data[i+1, 0], num_interpolations + 1)
-                y_interval = spline(x_interval)
-                if i == len(data[:, 0]) - 1:
-                    interpolated_points.extend(zip(x_interval, y_interval))
-                else:
-                    interpolated_points.extend(zip(x_interval[:-1], y_interval[:-1]))
-                
-                if shape-1 == i:
-                    length = len(interpolated_points)
-        else:
-            spline_1_list = []
-            for i in range(len(data[:, 0]) - 1):
-                x_interval_1 = np.linspace(data[i, 0], data[i+1, 0], num_interpolations + 1)
-                y_interval_1 = spline1(x_interval_1)
-                spline_1_list.extend(zip(x_interval_1[:-1], y_interval_1[:-1]))
-
-                if shape-1 == i:
-                    length = len(spline_1_list)
-                
-            spline_2_list = []
-            for i in range(len(flip_value) - 1):
-                x_interval_2 = np.linspace(flip_value[i, 0], flip_value[i+1, 0], num_interpolations + 1)
-                y_interval_2 = spline2(x_interval_2)
-                if i == len(flip_value) - 1:
-                    spline_2_list.extend(zip(x_interval_2, y_interval_2))
-                else: 
-                    spline_2_list.extend(zip(x_interval_2[:-1], y_interval_2[:-1]))
-
-            if Flip:
-                spline_1 = np.flip(np.array(spline_1_list),axis=0)
             else:
-                spline_1 = np.array(spline_1_list)
-            spline_2 = np.array(spline_2_list)
+                figure_input.plot(X[index,j,:,0], X[index,j,:,1], linestyle='-',linewidth=3, color='b',label='Past ego agent')
+                figure_input.plot(Y[index,j,:-1,0], Y[index,j,:-1,1], linestyle='dashed',linewidth=3, color='b', label='Future ego agent')
+                figure_input.plot((X[index,j,-1,0],Y[index,j,0,0]), (X[index,j,-1,1],Y[index,j,0,1]),linewidth=3, linestyle='dashed', color='b')
+                figure_input.annotate('', xy=(Y[index,j,-1,0], Y[index,j,-1,1]), xytext=(Y[index,j,-2,0], Y[index,j,-2,1]),
+                        size=20,arrowprops=dict(arrowstyle='-|>',linestyle=None,color="b",lw=3))
+        
 
-            return np.concatenate((spline_1,spline_2),axis=0), length
+    def add_rectangles(self, figure_input, data_list, color, label, car_length, car_width,alpha=1):
+        rectangles = []
+        # Add rectangles to the plot
+        for _ in range(len(data_list)):
+            rect = patches.Rectangle((0,0), car_length, car_width, edgecolor='none', facecolor=color, label=label,alpha=alpha)
+            figure_input.add_patch(rect)
+            rectangles.append(rect)
+        # To only add one label per type in the legend
+        handles, labels = figure_input.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        figure_input.legend(by_label.values(), by_label.keys())
 
-        # Convert the list of tuples to a NumPy array
-        if Flip:
-            interpolated_points = np.flip(np.array(interpolated_points),axis=0)
+        return rectangles
+    
+    def update_box_position(self,data,rectangle_data, car_length, car_width,num):
+        # Compensate that the rectangle is drawn from the bottom left corner
+        for i in range(len(rectangle_data)):
+            x, y = data[i][:,0], data[i][:,1]
+            dx = x[num + 1] - x[num]
+            dy = y[num + 1] - y[num]
+            angle_rad = np.arctan2(dy, dx)
+            shift_x = (car_width / 2) * np.sin(angle_rad) - (car_length / 2) * np.cos(angle_rad)
+            shift_y = -(car_width / 2) * np.cos(angle_rad) - (car_length / 2) * np.sin(angle_rad)
+            rectangle_data[i].set_xy([x[num-1] + shift_x, y[num-1] + shift_y])
+            angle = np.arctan2(dy, dx) * (180 / np.pi)  
+            rectangle_data[i].set_angle(angle)
+
+    
+    def interpolate_points(self,data,num_interpolations,agent):
+        # Flip agent to make x values monotonic
+        if agent == 'target':
+            new_data = np.flip(np.flip(data, axis=1),axis=0)
+            spline = CubicSpline(new_data[:, 0], new_data[:, 1])
         else:
-            interpolated_points = np.array(interpolated_points)
+            new_data = data
+            spline = CubicSpline(new_data[:, 0], new_data[:, 1])
 
-        return interpolated_points, length
+        interpolated_points = []
+
+        # interpolate the data
+        for i in range(len(data[:, 0]) - 1):
+            x_interval = np.linspace(new_data[i, 0], new_data[i+1, 0], num_interpolations)
+            y_interval = spline(x_interval)
+            if i == len(data[:, 0]) - 1:
+                interpolated_points.extend(zip(x_interval, y_interval))
+            else:
+                interpolated_points.extend(zip(x_interval[:-1], y_interval[:-1]))
+        
+        interpolated_points = np.array(interpolated_points)
+
+        if agent == 'target':
+            interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
+
+        return interpolated_points
 
     
     def adversarial_smoothing(self, X_pert, X, Y_pert_prediction, Y, T, Domain):
