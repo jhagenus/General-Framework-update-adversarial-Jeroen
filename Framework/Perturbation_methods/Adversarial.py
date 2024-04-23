@@ -14,6 +14,7 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import matplotlib.lines as mlines
 from matplotlib.patches import FancyArrowPatch
+from matplotlib import gridspec
 
 class Adversarial(perturbation_template):
     def check_and_extract_kwargs(self, kwargs):
@@ -142,20 +143,20 @@ class Adversarial(perturbation_template):
 
         # settings
         # Plot input data and spline (if plot is True -> plot_spline can be set on True) 
-        plot_input = True
-        plot_spline = True
+        plot_input = False
+        plot_spline = False
 
         # Spline settings
         spline = True 
         spline_interval = 100
 
         # Plot the loss over the iterations
-        plot_loss = True
+        plot_loss = False
         loss_store = []
 
         # Plot the adversarial scene
-        static_adv_scene = True
-        animated_adv_scene = True
+        static_adv_scene = False
+        animated_adv_scene = False
 
         # Car size
         car_length = 4.1
@@ -169,7 +170,7 @@ class Adversarial(perturbation_template):
         flip_dimensions = True
 
         # Initialize parameters
-        iter_num = 1
+        iter_num = 10
         epsilon_acc = 7
         epsilon_curv = 0.2
 
@@ -183,9 +184,9 @@ class Adversarial(perturbation_template):
 
         # Randomized smoothing 
         smooth_perturbed_data = True
-        smooth_unperturbed_data = True
-        num_samples = 3
-        sigmas = [0.01,0.02]
+        smooth_unperturbed_data = False
+        num_samples = 15
+        sigmas = [0.02,0.04,0.06]
         plot_smoothing = True
 
         # remove nan from input and remember old shape
@@ -200,11 +201,11 @@ class Adversarial(perturbation_template):
         ADE_loss_adv_future_barrier = False
 
         # Collision loss
-        collision_loss = False
+        collision_loss = True
         collision_loss_barrier = False
         fake_collision_loss = False
         fake_collision_loss_barrier = False
-        hide_collision_loss = True
+        hide_collision_loss = False
         hide_collision_loss_barrier = False
 
         # check if only one loss function is activated
@@ -290,7 +291,7 @@ class Adversarial(perturbation_template):
             # check if cotrol action are converted correctly
             if i == 0:
                 if future_action:
-                    equal_tensors = torch.round(adv_position[:, 0, :X.shape[2], :], decimals=5) == torch.round(X[:, 0, :], decimals=5)
+                    equal_tensors = torch.round(adv_position[:, 0, :, :], decimals=2) == torch.round(torch.cat((X[:, 0, :],Y[:, 0, :]),dim=1), decimals=2)
                 else:
                     equal_tensors = torch.round(adv_position[:, 0, :], decimals=5) == torch.round(X[:, 0, :], decimals=5)
 
@@ -644,24 +645,24 @@ class Adversarial(perturbation_template):
                 dt = self.kwargs['data_param']['dt']
 
                 # Initialize storage for velocity and heading
-                velocity = torch.zeros(X.shape[2]).to(device='cuda')
-                angle = torch.zeros(X.shape[2]).to(device='cuda')
+                velocity = torch.zeros(new_input.shape[2]).to(device='cuda')
+                angle = torch.zeros(new_input.shape[2]).to(device='cuda')
 
                 # update initial velocity 
-                velocity_init[batch_idx] = velocity[0] = self.compute_velocity(X, batch_idx, dt, 0)
+                velocity_init[batch_idx] = velocity[0] = self.compute_velocity(new_input, batch_idx, dt, 0)
 
                 # update initial heading
-                heading_init[batch_idx] = angle[0] = self.compute_heading(X, batch_idx,0)
+                heading_init[batch_idx] = angle[0] = self.compute_heading(new_input, batch_idx,0)
 
-                for i in range(X.shape[2]-1):
+                for i in range(new_input.shape[2]-1):
                     # Calculate velocity for next time step
-                    velocity[i+1] = self.compute_velocity(X, batch_idx, dt, i)
+                    velocity[i+1] = self.compute_velocity(new_input, batch_idx, dt, i)
 
                     # Update the control actions
                     control_action[batch_idx,0,i,0] = (velocity[i+1] - velocity[i]) / dt 
 
                     # Calculate the heading for the next time step   
-                    angle[i+1] = self.compute_heading(X, batch_idx,i)
+                    angle[i+1] = self.compute_heading(new_input, batch_idx,i)
 
                     # Calculate the change of heading for the next time step
                     d_yaw_rate = (angle[i+1] - angle[i]) / dt
@@ -842,8 +843,8 @@ class Adversarial(perturbation_template):
                     ax1 = fig.add_subplot(2,2,2)
                     ax2 = fig.add_subplot(2,1,2)
                 else:
-                    ax = fig.add_subplot(1,2,1)
-                    ax2 = fig.add_subplot(1,2,2)
+                    ax = fig.add_subplot(2,1,1)
+                    ax2 = fig.add_subplot(2,1,2)
 
                 if X_pert_smoothed is not None and X_unpert_smoothed is not None:
                     style = 'unperturbed'
@@ -874,6 +875,7 @@ class Adversarial(perturbation_template):
 
                 if X_pert_smoothed is not None and X_unpert_smoothed is not None:
                     # Plot 2) Plot the smoothed predictions
+                    print(style1)
                     self.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,ax1,i,Pred_pert_smoothed,Pred_unpert_smoothed,style1,j)
 
                     # Plot the road lines
@@ -896,7 +898,7 @@ class Adversarial(perturbation_template):
                 ax2.set_ylim(-10, 5)
                 ax2.set_aspect('equal')
                 ax2.set_title('Adversarial scene plot with smoothed prediction')
-                ax2.legend()
+                ax2.legend(loc='lower left')
                 plt.show()
 
 
@@ -972,19 +974,21 @@ class Adversarial(perturbation_template):
             fig = plt.figure(figsize = (18,12), dpi=1920/16)
             fig.suptitle(f'Example {i} of batch - Adversarial scene plot animated')
 
-            ax = fig.add_subplot(2,2,1)
-            ax1 = fig.add_subplot(2,2,2)
-            ax2 = fig.add_subplot(2,1,2)
+            # Create subplots
+            gs = gridspec.GridSpec(2, 4, figure=fig)
+            ax = fig.add_subplot(gs[0, :3])
+            ax1 = fig.add_subplot(gs[0, 3])
+            ax2 = fig.add_subplot(gs[1, :])
 
             # initialize the cars
             rectangles_tar = self.add_rectangles(ax, interpolated_data_tar, 'yellow', 'Target-agent', car_length, car_width,alpha=1)
             rectangles_ego = self.add_rectangles(ax, interpolated_data_ego, 'blue', 'Ego-agent', car_length, car_width,alpha=1)
 
             if future_action:
-                rectangles_tar_adv_future = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial agent perturb future', car_length, car_width,alpha=1)
-                rectangles_tar_adv = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial agent', car_length, car_width, alpha=0.3)
+                rectangles_tar_adv_future = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial target agent', car_length, car_width,alpha=1)
+                rectangles_tar_adv = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial prediction', car_length, car_width, alpha=0.3)
             else: 
-                rectangles_tar_adv = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial agent', car_length, car_width, alpha=1)
+                rectangles_tar_adv = self.add_rectangles(ax,interpolated_data_tar_adv, 'red', 'Adversarial prediction', car_length, car_width, alpha=1)
             
             # Function to update the animated plot
             def update(num):
@@ -999,47 +1003,43 @@ class Adversarial(perturbation_template):
                 return 
             
             # Set the plot limits and road lines
-            min_value_x, max_value_x, min_value_y, max_value_y = self.find_limits_data(X, Y, i)
+            # min_value_x, max_value_x, min_value_y, max_value_y = self.find_limits_data(X, Y, i)
 
             # Plot the road lines
             offset = 10
-            self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,ax)
+            self.plot_road_lines(-100, 20, -30, 20, offset,ax)
 
             # Set the plot limits
+            ax.set_xlim(-100, 10) 
+            ax.set_ylim(-30, 10)
             ax.set_aspect('equal')
-            ax.set_xlim(min_value_x - offset, max_value_x + offset) 
-            ax.set_ylim(min_value_y - offset, max_value_y + 1.5* offset)
-            ax.legend()
+            ax.legend(loc='lower left')
             ax.set_title('Animation of the adversarial scene')
             
             ani = animation.FuncAnimation(fig, update, len(interpolated_data_tar[0])-1,
                                         interval=100/num_interpolations, blit=False)
             
-
             # Plot the second Figure
             self.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,ax1,i)
 
             # Plot the road lines
-            self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,ax1)
+            self.plot_road_lines(2, 10, -2, 4, offset,ax1)
 
             # Set the plot limits
             ax1.set_aspect('equal')
-            ax1.set_xlim(1, max_value_x + 0.5)  
-            ax1.set_ylim(-2, max_value_y + 0.5)
+            ax1.set_xlim(2, 10)  
+            ax1.set_ylim(-2, 4)
             ax1.set_title('Zoomed adversarial scene plot')
 
             # Plot the third Figure
             self.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, future_action,ax2,i)
 
-            # Plot the road lines
-            self.plot_road_lines(min_value_x, max_value_x, min_value_y, max_value_y, offset,ax2)
-
             # Plot the rectangle for zoom
-            ax2.add_patch(patches.Rectangle((1, -2), max_value_x + 0.5 - 1, max_value_y + 0.5 + 2, edgecolor='black', facecolor='none', linestyle='dashed', linewidth=1))
+            ax2.add_patch(patches.Rectangle((2, -2), 8, 6, edgecolor='black', facecolor='none', linestyle='dashed', linewidth=1))
 
             # include pointer
             # Adding an arrow to point from figure to figure
-            arrow = FancyArrowPatch((0.80, 0.40), (0.70, 0.60),
+            arrow = FancyArrowPatch((0.85, 0.40), (0.81, 0.60),
                                     transform=fig.transFigure,  # Use figure coords
                                     mutation_scale=20,          # Size of arrow head
                                     lw=1,                       # Line width
@@ -1048,10 +1048,14 @@ class Adversarial(perturbation_template):
 
             fig.patches.extend([arrow])
 
-            offset = 2
-            ax2.set_xlim(min_value_x - offset, max_value_x + offset)   # Set x-axis limits
-            ax2.set_ylim(min_value_y - offset, max_value_y + offset)
-            ax2.legend()
+            # Plot the road lines
+            offset = 10
+            self.plot_road_lines(-100, 20, -30, 20, offset,ax2)
+
+            # Set the plot limits
+            ax2.set_xlim(-80, 10) 
+            ax2.set_ylim(-15, 5)
+            ax2.legend(loc='lower left')
             ax2.set_aspect('equal')
             ax2.set_title('Adversarial scene static')
 
@@ -1068,16 +1072,15 @@ class Adversarial(perturbation_template):
                 
                 # Plot pertubed history target agent and prediction
                 if style != 'unperturbed' and style != 'perturbed':
-                    self.draw_arrow(X_new_pert[index,j,:], Pred_t[index,:], figure_input, 'r', 3,'-', '-', 'Past perturbed target agent','Future adversarial prediction', 1, 0.3)
+                    self.draw_arrow(X_new_pert[index,j,:], Pred_t[index,:], figure_input, 'r', 3,'-', '-', 'Adversarial target agent','Adversarial prediction', 1, 0.3)
                 
                 if style == 'perturbed':
-                    self.draw_arrow(X_new_pert[index,j,:], Pred_t[index,:], figure_input, 'r', 3,'-', '-', 'Past perturbed target agent',None, 1, 0)
+                    self.draw_arrow(X_new_pert[index,j,:], Pred_t[index,:], figure_input, 'r', 3,'-', '-', 'Adversarial target agent',None, 1, 0)
 
                 # Plot future perturbed target agent
                 if future_action and style != 'unperturbed' and style != 'perturbed':
                     self.draw_arrow(X_new_pert[index,j,:], Y_new_pert[index,j,:], figure_input, 'r', 3,'-', 'dashed', None,None, 0, 1)
-    
-            # Plot the ego agent
+            
             else:
                 self.draw_arrow(X[index,j,:], Y[index,j,:], figure_input, 'b', 3,'-', 'dashed', 'Past ego agent','Future ego agent', 1, 1)
 
@@ -1097,11 +1100,19 @@ class Adversarial(perturbation_template):
                 self.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,None, 0, 1)
 
             elif style == 'adv_smoothed':
-                Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
-                self.draw_arrow(X_new_pert[index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-','-', None,'Smoothed unperturbed future', 0, 1)
+                if Pred_unpert_smoothed is not None and Pred_pert_smoothed is None:
+                    Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                    self.draw_arrow(X_new_pert[index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-','-', None,'Smoothed unperturbed future', 0, 1)
                 
-                Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
-                self.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,'Smoothed perturbed future', 0, 1)
+                elif Pred_unpert_smoothed is None and Pred_pert_smoothed is not None:
+                    Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                    self.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,'Smoothed perturbed future', 0, 1)
+                else:
+                    Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                    self.draw_arrow(X_new_pert[index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-','-', None,'Smoothed unperturbed future', 0, 1)
+
+                    Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                    self.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,'Smoothed perturbed future', 0, 1)
     
 
     def draw_arrow(self,data_X, data_Y, figure_input, color, linewidth,line_style_input,line_style_output, label_input,label_output,alpha_input,alpha_output):
