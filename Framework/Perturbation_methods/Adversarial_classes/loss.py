@@ -2,7 +2,7 @@ import torch
 
 class Loss:
     @staticmethod
-    def calculate_loss(X,X_new,Y,Y_new,Pred_t,ADE_loss,ADE_loss_barrier,ADE_loss_adv_future,ADE_loss_adv_future_barrier,collision_loss,collision_loss_barrier,fake_collision_loss,fake_collision_loss_barrier,hide_collision_loss,hide_collision_loss_barrier,log_barrier,ADVDO_barrier,spline_barrier,distance_threshold,log_value,spline_data):
+    def calculate_loss(X,X_new,Y,Y_new,Pred_t,Pred_iter_1,ADE_loss,ADE_loss_adv_future_GT,ADE_loss_adv_future_pred,collision_loss,fake_collision_loss_GT,fake_collision_loss_Pred,hide_collision_loss_GT,hide_collision_loss_Pred,log_barrier,ADVDO_barrier,spline_barrier,distance_threshold,log_value,spline_data):
 
         # Add  regularization loss to adversarial input using barrier function
         if log_barrier:
@@ -11,28 +11,50 @@ class Loss:
             barrier_output = Loss.AVDDO_barrier_function(X_new, X, distance_threshold)
         elif spline_barrier:
             barrier_output = Loss.barrier_log_function_spline(distance_threshold, X_new, spline_data, log_value)
+        else:
+            barrier_output = False
             
         # Calculate the total loss
         if ADE_loss:
-            losses = Loss.ADE_loss_function(Y, Pred_t)
-        elif ADE_loss_barrier:
-            losses = Loss.ADE_loss_function(Y, Pred_t) + barrier_output
-        elif ADE_loss_adv_future:
-            losses = Loss.ADE_adv_future_pred(Y_new, Pred_t) - Loss.ADE_adv_future_GT(Y_new, Y)
-        elif ADE_loss_adv_future_barrier:
-            losses = Loss.ADE_adv_future_pred(Y_new, Pred_t) - Loss.ADE_adv_future_GT(Y_new, Y) + barrier_output
+            if not barrier_output:
+                losses = -Loss.ADE_loss_function(Y, Pred_t)
+            else:
+                losses = -Loss.ADE_loss_function(Y, Pred_t) - barrier_output
+        elif ADE_loss_adv_future_GT:
+            if not barrier_output:
+                losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y)
+            else:
+                losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y) - barrier_output
+        elif ADE_loss_adv_future_pred:
+            if not barrier_output:
+                losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1)
+            else:
+                losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1) - barrier_output
         elif collision_loss:
-            losses = -Loss.collision_loss_function(Y, Pred_t)
-        elif collision_loss_barrier:
-            losses = -Loss.collision_loss_function(Y, Pred_t) + barrier_output
-        elif fake_collision_loss:
-            losses = -Loss.collision_loss_function(Y, Pred_t) - Loss.ADE_adv_future_GT(Y_new, Y)
-        elif fake_collision_loss_barrier:
-            losses = -Loss.collision_loss_function(Y, Pred_t) - Loss.ADE_adv_future_GT(Y_new, Y) + barrier_output 
-        elif hide_collision_loss:
-            losses = -Loss.collision_loss_adv_future(Y_new, Y) - Loss.ADE_loss_function(Y, Pred_t) 
-        elif hide_collision_loss_barrier:
-            losses = -Loss.collision_loss_adv_future(Y_new, Y) - Loss.ADE_loss_function(Y, Pred_t) + barrier_output 
+            if not barrier_output:
+                losses = Loss.collision_loss_function(Y, Pred_t)
+            else:
+                losses = Loss.collision_loss_function(Y, Pred_t) - barrier_output
+        elif fake_collision_loss_GT:
+            if not barrier_output:
+                losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y)
+            else:
+                losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y) - barrier_output 
+        elif fake_collision_loss_Pred:
+            if not barrier_output:
+                losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1)
+            else:
+                losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1) - barrier_output
+        elif hide_collision_loss_GT:
+            if not barrier_output:
+                losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_loss_function(Y, Pred_t) 
+            else:
+                losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_loss_function(Y, Pred_t) - barrier_output
+        elif hide_collision_loss_Pred:
+            if not barrier_output:
+                losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_pred_pred_iter_1(Pred_t, Pred_iter_1)
+            else:
+                losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_pred_pred_iter_1(Pred_t, Pred_iter_1) - barrier_output
 
         return losses
     
@@ -46,6 +68,14 @@ class Loss:
         # index 0 is the target agent -> norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
         return torch.mean(torch.mean(torch.linalg.norm(Y_new[:,0,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1) 
     
+    def ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1):
+        # index 0 is the target agent -> norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
+        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:,0,:,:].unsqueeze(1) - Pred_iter_1[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
+    
+    def ADE_pred_pred_iter_1(Pred_t, Pred_iter_1):
+        # The target agent -> norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
+        return torch.mean(torch.mean(torch.linalg.norm(Pred_t[:,:,:,:] - Pred_iter_1[:,:,:,:], dim=-1 , ord = 2), dim=-1),dim=-1)
+    
     @staticmethod
     def ADE_adv_future_GT(Y_new, Y):
         # index 0 is the target agent -> norm is over the positions -> torch.mean is over the time steps 
@@ -53,13 +83,13 @@ class Loss:
     
     @staticmethod
     def collision_loss_function(Y, Pred_t):
-        # index 1 is the ego agent -> norm is over the positions -> inner torch.min is over the time steps -> torch.mean is over the number of prediciton
+        # index 1 is the ego agent -> norm is over the positions -> torch.min is over the time steps -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Y[:,1,:,:].unsqueeze(1) - Pred_t[:,:,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
     
     @staticmethod
     def collision_loss_adv_future(Y_new, Y):
-        # index 0 is target agent, index 1 is the ego agent -> norm is over the positions -> inner torch.min is over the time steps -> torch.mean is over the number of prediciton
-        return torch.mean(torch.linalg.norm(Y[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values,dim=-1)
+        # index 0 is target agent, index 1 is the ego agent -> norm is over the positions -> torch.min is over the time steps 
+        return torch.linalg.norm(Y[:,1,:,:] - Y_new[:,0,:,:], dim=-1 , ord = 2).min(dim=-1).values
 
     @staticmethod
     def barrier_log_function(distance_threshold, X_new, X, log_value):

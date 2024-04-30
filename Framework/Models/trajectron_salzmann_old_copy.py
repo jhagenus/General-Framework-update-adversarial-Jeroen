@@ -693,7 +693,7 @@ class trajectron_salzmann_old_copy(model_template):
             
             self.save_predicted_batch_data(Pred_t, Sample_id, Agent_id)
 
-    def predict_batch_tensor(self,X,T,Domain,num_steps):
+    def predict_batch_tensor(self,X,T,Domain,num_steps, num_samples = 20):
 
         X = X.to(self.trajectron.device)
         img = None
@@ -719,7 +719,7 @@ class trajectron_salzmann_old_copy(model_template):
                                     robot                 = None,
                                     map                   = img,
                                     prediction_horizon    = num_steps,
-                                    num_samples           = self.num_samples_path_pred)
+                                    num_samples           = num_samples)
         
 
         Pred = predictions.permute(1,0,2,3)

@@ -8,10 +8,20 @@ class Helper:
         if future_action:
             equal_tensors = torch.round(adv_position[:, 0, :, :], decimals=2) == torch.round(torch.cat((X[:, 0, :],Y[:, 0, :]),dim=1), decimals=2)
         else:
-            equal_tensors = torch.round(adv_position[:, 0, :], decimals=5) == torch.round(X[:, 0, :], decimals=5)
+            equal_tensors = torch.round(adv_position[:, 0, :], decimals=2) == torch.round(X[:, 0, :], decimals=2)
 
         if not torch.all(equal_tensors):
             raise ValueError("The dynamical transformation is not correct.")
+        
+    def create_new_input(X,Y, ADE_loss_adv_future_GT,ADE_loss_adv_future_pred, fake_collision_loss_GT, fake_collision_loss_Pred, hide_collision_loss_GT, hide_collision_loss_Pred):
+        if ADE_loss_adv_future_GT or ADE_loss_adv_future_pred or fake_collision_loss_GT or fake_collision_loss_Pred or hide_collision_loss_GT  or hide_collision_loss_Pred:
+            future_action = True
+            new_input = torch.cat((X,Y),dim=2)
+        else:
+            future_action = False
+            new_input = X
+
+        return new_input, future_action
   
     @staticmethod
     def return_to_old_shape(Y_new_pert, Y_shape):
@@ -37,6 +47,11 @@ class Helper:
     def assert_only_one_true(*args):
         # Check that exactly one argument is True
         assert sum(args) == 1, "Assertion Error: Exactly one loss function must be activated."
+
+    @staticmethod
+    def assert_only_one_true_barrier(*args):
+        # Check that exactly one argument is True
+        assert sum(args) <= 1, "Assertion Error: Only one barrier loss function can be activated or none."
 
     @staticmethod
     def masked_data(X, Y):
@@ -112,16 +127,18 @@ class Helper:
         return torch.from_numpy(np_array).to(dtype=torch.float32, device='cuda')
     
     @staticmethod
-    def detach_tensor(X_new_adv, Y_new_adv, Pred_t):
+    def detach_tensor(X_new_adv, Y_new_adv, Pred_t,Pred_iter_1):
         # Detach tensors, move them to CPU, and convert them to NumPy arrays
         X_new_pert = X_new_adv.detach().cpu().numpy()
         Y_new_pert = Y_new_adv.detach().cpu().numpy()
         Pred_t = Pred_t.detach().cpu().numpy()
+        Pred_iter_1 = Pred_iter_1.detach().cpu().numpy()
 
         # Calculate the mean of the predicted future positions
         Pred_t = np.mean(Pred_t, axis=1)
+        Pred_iter_1 = np.mean(Pred_iter_1, axis=1)
         
-        return X_new_pert, Y_new_pert, Pred_t
+        return X_new_pert, Y_new_pert, Pred_t, Pred_iter_1
     
     @staticmethod
     def is_monotonic(data):
@@ -131,3 +148,17 @@ class Helper:
         is_decreasing = np.all(data[:-1,0] >= data[1:,0])
 
         return is_increasing or is_decreasing
+    
+    @staticmethod
+    def return_data(adv_position, X, Y, future_action):
+        if future_action:
+            X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=2)
+            X_new_adv = X_new
+            Y_new_adv = Y_new
+        else: 
+            X_new = adv_position
+            Y_new = Y
+            X_new_adv = adv_position
+            Y_new_adv = Y
+
+        return X_new, Y_new, X_new_adv, Y_new_adv

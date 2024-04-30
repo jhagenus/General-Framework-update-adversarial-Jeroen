@@ -111,6 +111,8 @@ class Spline:
             else:
                 interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
         elif agent == 'adv':
-            interpolated_points = np.flip(interpolated_points, axis=0)
-
+            if monotonic:
+                interpolated_points = np.flip(interpolated_points, axis=0)
+            else:
+                interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
         return interpolated_points

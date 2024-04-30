@@ -2,7 +2,7 @@ import torch
 
 class Control_action:
     @staticmethod
-    def get_control_actions(X, mask_values_X, flip_dimensions, new_input,dt):
+    def Reversed_Dynamical_Model(X, mask_values_X, flip_dimensions, new_input,dt):
         # Initialize control action
         control_action = torch.zeros_like(new_input)
 
@@ -48,10 +48,9 @@ class Control_action:
 
                     # Calculate the curvature 
                     curvature = d_yaw_rate / velocity[i]
-                    control_action[batch_idx,0,i-1,1] = curvature 
+                    control_action[batch_idx,0,i,1] = curvature 
 
         control_action[torch.isinf(control_action)] = 1e-6
-        control_action.requires_grad = True 
 
         return control_action, heading_init, velocity_init
     
@@ -76,17 +75,18 @@ class Control_action:
         cur = control_action[:,0,:-1,1]
 
         # Calculate the velocity for all time steps
-        Velocity = torch.cumsum(acc, dim=1) * dt + velocity_init.unsqueeze(1)
+        Velocity_set = torch.cumsum(acc, dim=1) * dt + velocity_init.unsqueeze(1)
+        Velocity = torch.cat((velocity_init.unsqueeze(1), Velocity_set), dim=1)
 
         # Calculte the change of heading for all time steps
-        D_yaw_rate = Velocity * cur
-        D_yaw_rate = torch.cat((D_yaw_rate[:, -1:], D_yaw_rate[:, :-1]), dim=1)
+        D_yaw_rate = Velocity[:,:-1] * cur
 
         # Calculate Heading for all time steps
         Heading = torch.cumsum(D_yaw_rate, dim=1) * dt + heading_init.unsqueeze(1)
+        Heading = torch.cat((heading_init.unsqueeze(1), Heading), dim=1)
 
         # Calculate the new position for all time steps
-        adv_position[:, 0, 1:, 0] = torch.cumsum(Velocity * torch.cos(Heading), dim=1) * dt + adv_position[:, 0, 0, 0].unsqueeze(1)
-        adv_position[:, 0, 1:, 1] = torch.cumsum(Velocity * torch.sin(Heading), dim=1) * dt + adv_position[:, 0, 0, 1].unsqueeze(1)
+        adv_position[:, 0, 1:, 0] = torch.cumsum(Velocity[:,1:] * torch.cos(Heading[:,1:]), dim=1) * dt + adv_position[:, 0, 0, 0].unsqueeze(1)
+        adv_position[:, 0, 1:, 1] = torch.cumsum(Velocity[:,1:] * torch.sin(Heading[:,1:]), dim=1) * dt + adv_position[:, 0, 0, 1].unsqueeze(1)
 
         return adv_position

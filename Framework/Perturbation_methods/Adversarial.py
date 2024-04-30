@@ -5,12 +5,6 @@ import numpy as np
 import importlib
 from Data_sets.data_interface import data_interface
 import torch
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from scipy.interpolate import CubicSpline
-import matplotlib.patches as patches
-from matplotlib.patches import FancyArrowPatch
-from matplotlib import gridspec
 
 from Adversarial_classes.control_action import Control_action
 from Adversarial_classes.helper import Helper
@@ -165,77 +159,75 @@ class Adversarial(perturbation_template):
         car_length = 4.1
         car_width = 1.7
 
-        # validation settings
-        Helper.validate_plot_settings(plot_input, plot_spline)
-        Helper.validate_plot_settings(spline, plot_spline)
-
         # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
         flip_dimensions = True
 
         # Initialize parameters
-        iter_num = 2
+        iter_num = 50
         epsilon_acc = 7
-        epsilon_curv = 0.2
+        epsilon_curv = 0.25
 
         # Learning decay
         learning_rate_decay = True
         gamma = 1
 
-        # Learning rate
-        alpha_acc = 3
-        alpha_curv = 0.02
+        # Learning rate (epsilon/iter_num)
+        alpha_acc = 0.2
+        alpha_curv = 0.01
 
         # Randomized smoothing 
         smooth_perturbed_data = True
         smooth_unperturbed_data = True
-        num_samples = 2
-        sigmas = [0.02]
+        num_samples = 10
+        sigmas = [0.05,0.1]
         plot_smoothing = True
+        smoothing_method = 'control_action'   # 'position' or 'control_action'
 
         # remove nan from input and remember old shape
         Y_shape = Y.shape
         Y = Helper.remove_nan_values(Y)
 
-        # Select loss function ()
+        # Select loss function (set 1 on True and the rest on False)
         #ADE loss
         ADE_loss = False
-        ADE_loss_barrier = False
-        ADE_loss_adv_future = False
-        ADE_loss_adv_future_barrier = False
+        ADE_loss_adv_future_GT = False
+        ADE_loss_adv_future_pred = False
 
         # Collision loss
-        collision_loss = True
-        collision_loss_barrier = False
-        fake_collision_loss = False
-        fake_collision_loss_barrier = False
-        hide_collision_loss = False
-        hide_collision_loss_barrier = False
+        collision_loss = False
+        fake_collision_loss_GT = False
+        fake_collision_loss_Pred = False
+        hide_collision_loss_GT = False
+        hide_collision_loss_Pred = True
 
         # check if only one loss function is activated
         Helper.assert_only_one_true(
                 ADE_loss,
-                ADE_loss_barrier,
-                ADE_loss_adv_future,
-                ADE_loss_adv_future_barrier,
+                ADE_loss_adv_future_GT,
+                ADE_loss_adv_future_pred,
                 collision_loss,
-                collision_loss_barrier,
-                fake_collision_loss,
-                fake_collision_loss_barrier,
-                hide_collision_loss,
-                hide_collision_loss_barrier
+                fake_collision_loss_GT,
+                fake_collision_loss_Pred,
+                hide_collision_loss_GT,
+                hide_collision_loss_Pred
             )
 
-        # Barrier function
-        log_barrier = True
+        # Barrier function (set 1 on true if barrier is activated and the rest on false, or all on false if no barrier is activated)
+        log_barrier = False
         ADVDO_barrier = False
-        spline_barrier = False
+        spline_barrier = True
 
         # check if only one barrier function is activated
-        Helper.assert_only_one_true(
+        Helper.assert_only_one_true_barrier(
                 log_barrier,
                 ADVDO_barrier,
                 spline_barrier
             )
+        
+        # validation settings
+        Helper.validate_plot_settings(plot_input, plot_spline)
+        Helper.validate_plot_settings(spline, plot_spline)
+        Helper.validate_plot_settings(spline, spline_barrier)
 
         # Barrier function parameters
         distance_threshold = 1
@@ -255,20 +247,17 @@ class Adversarial(perturbation_template):
         X, Y, spline_data = Helper.convert_to_tensor(X, Y, spline_data)
 
         # Check if future action is required
-        if ADE_loss_adv_future or ADE_loss_adv_future_barrier or fake_collision_loss or hide_collision_loss:
-            future_action = True
-            new_input = torch.cat((X,Y),dim=2)
-        else:
-            future_action = False
-            new_input = X
+        new_input, future_action = Helper.create_new_input(X,Y, ADE_loss_adv_future_GT,ADE_loss_adv_future_pred, fake_collision_loss_GT, fake_collision_loss_Pred, hide_collision_loss_GT, hide_collision_loss_Pred)
 
         # Calculate initial control actions
         dt = self.kwargs['data_param']['dt']
-        control_action, heading_init, velocity_init = Control_action.get_control_actions(X, mask_values_X, flip_dimensions, new_input,dt)
+        control_action, heading_init, velocity_init = Control_action.Reversed_Dynamical_Model(X, mask_values_X, flip_dimensions, new_input,dt)
+        control_action.requires_grad = True 
 
         # Storage for adversarial position
         X_new_adv = torch.zeros_like(X)
         Y_new_adv = torch.zeros_like(Y)
+        Pred_iter_1 = torch.zeros((1, 20, Y.shape[2], 2))
 
         # Start the optimization of the adversarial attack
         for i in range(iter_num):
@@ -283,21 +272,17 @@ class Adversarial(perturbation_template):
                 Helper.check_conversion_control_action(adv_position, X, Y, future_action)
 
             # Split the adversarial position back to X and Y
-            if future_action:
-                X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=2)
-                X_new_adv = X_new
-                Y_new_adv = Y_new
-            else: 
-                X_new = adv_position
-                Y_new = Y
-                X_new_adv = adv_position
-                Y_new_adv = Y
+            X_new, Y_new, X_new_adv, Y_new_adv = Helper.return_data(adv_position, X, Y, future_action)
 
             # Output forward pass
             num_steps = Y.shape[2]
                 
             # Forward pass through the model
             Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain, num_steps)
+
+            # Store the first prediction
+            if i == 0:
+                Pred_iter_1 = Pred_t.detach()
 
             # Calculate the loss
             losses = Loss.calculate_loss(
@@ -306,16 +291,15 @@ class Adversarial(perturbation_template):
                         Y,
                         Y_new,
                         Pred_t,
+                        Pred_iter_1,
                         ADE_loss,
-                        ADE_loss_barrier,
-                        ADE_loss_adv_future,
-                        ADE_loss_adv_future_barrier,
+                        ADE_loss_adv_future_GT,
+                        ADE_loss_adv_future_pred,
                         collision_loss,
-                        collision_loss_barrier,
-                        fake_collision_loss,
-                        fake_collision_loss_barrier,
-                        hide_collision_loss,
-                        hide_collision_loss_barrier,
+                        fake_collision_loss_GT,
+                        fake_collision_loss_Pred,
+                        hide_collision_loss_GT,
+                        hide_collision_loss_Pred,
                         log_barrier,
                         ADVDO_barrier,
                         spline_barrier,
@@ -339,8 +323,8 @@ class Adversarial(perturbation_template):
 
             # Update Control inputs
             with torch.no_grad():
-                control_action[:,0,:,0].add_(grad[:,0,:,0], alpha=alpha_acc)
-                control_action[:,0,:,1].add_(grad[:,0,:,1], alpha=alpha_curv)
+                control_action[:,0,:,0].subtract_(grad[:,0,:,0], alpha=alpha_acc)
+                control_action[:,0,:,1].subtract_(grad[:,0,:,1], alpha=alpha_curv)
                 control_action[:,0,:,0].clamp_(-epsilon_acc, epsilon_acc)
                 control_action[:,0,:,1].clamp_(-epsilon_curv, epsilon_curv)
                 control_action[:,1:] = 0.0
@@ -356,11 +340,17 @@ class Adversarial(perturbation_template):
                 T,
                 Domain, 
                 num_steps,
-                self.pert_model
+                self.pert_model,
+                mask_values_X,
+                flip_dimensions,
+                dt,
+                epsilon_acc,
+                epsilon_curv,
+                smoothing_method
                 )
 
         # Detach the tensor and convert to numpy
-        X_new_pert, Y_new_pert, Pred_t = Helper.detach_tensor(X_new_adv, Y_new_adv, Pred_t)
+        X_new_pert, Y_new_pert, Pred_t, Pred_iter_1 = Helper.detach_tensor(X_new_adv, Y_new_adv, Pred_t, Pred_iter_1)
 
         # Plot the results
         Plot.plot_results(
@@ -369,6 +359,7 @@ class Adversarial(perturbation_template):
                 Y_copy, 
                 Y_new_pert, 
                 Pred_t,
+                Pred_iter_1,
                 loss_store,
                 plot_loss,  
                 future_action,
@@ -383,7 +374,8 @@ class Adversarial(perturbation_template):
                 Pred_pert_smoothed, 
                 X_unpert_smoothed, 
                 Pred_unpert_smoothed,
-                sigmas
+                sigmas,
+                smoothing_method
             )
 
         # Return Y to old shape
@@ -420,7 +412,7 @@ class Adversarial(perturbation_template):
 
         '''
 
-        self.batch_size = 2
+        self.batch_size = 1
 
         # TODO: Implement this function, you can decide here if you somehow rely on self.pert_model, if possible, or instead use a fixed value
 
