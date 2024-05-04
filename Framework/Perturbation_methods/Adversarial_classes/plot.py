@@ -4,13 +4,15 @@ import matplotlib.animation as animation
 import matplotlib.patches as patches
 from matplotlib.patches import FancyArrowPatch
 from matplotlib import gridspec
+import torch
 
 from Adversarial_classes.helper import Helper
 from Adversarial_classes.spline import Spline
+from Adversarial_classes.control_action import Control_action
 
 class Plot:
     @staticmethod
-    def plot_results(X, X_new_pert, Y, Y_new_pert, Pred_t, Pred_iter_1, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width,mask_values_X,mask_values_Y,plot_smoothing,X_pert_smoothed,Pred_pert_smoothed,X_unpert_smoothed,Pred_unpert_smoothed,sigmas,smoothing_method):
+    def plot_results(X, X_new_pert, Y, Y_new_pert, Pred_t, Pred_iter_1, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width,mask_values_X,mask_values_Y,plot_smoothing,X_pert_smoothed,Pred_pert_smoothed,X_unpert_smoothed,Pred_unpert_smoothed,sigmas,smoothing_method,dt,flip_dimensions,epsilon_acc,epsilon_curv):
         # Plot the loss over the iterations
         if plot_loss:
             Plot.plot_loss_over_iterations(loss_store)
@@ -21,7 +23,7 @@ class Plot:
 
         # Plot the animated adversarial scene  
         if animated_adv_scene:
-            Plot.plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y)
+            Plot.plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y,dt,flip_dimensions,epsilon_acc,epsilon_curv)
 
         # Plot the randomized smoothing
         if plot_smoothing:
@@ -159,9 +161,49 @@ class Plot:
             plt.show()
 
     @staticmethod
-    def plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y):
+    def control_action_interpolated_points(interpolated_data,mask_values_X,flip_dimensions,dt):
+        control_action_tensor = torch.tensor(np.expand_dims(np.expand_dims(np.array(interpolated_data),axis=0),axis=0)).to(device='cuda')
+        control_action,_,_ = Control_action.Reversed_Dynamical_Model(control_action_tensor, mask_values_X, flip_dimensions, control_action_tensor,dt)
+        return control_action.cpu().detach().numpy()
+    
+    def create_control_action_animation(data_adv_future,data_tar,data_adv,data_tar_pred,data_ego,mask_values_X,flip_dimensions,dt,num_interpolations,future_action,ax_control_acc,ax_control_curve):
+        if future_action:
+            # interpolated_data_list = [interpolated_data_tar_adv_future,interpolated_data_tar,interpolated_data_tar_adv,interpolated_data_tar_Pred,interpolated_data_ego]
+            data_list = [data_adv_future,data_tar,data_adv,data_tar_pred,data_ego]
+            colors = ['red','yellow','red','m','blue']
+            alphas = [1,1,0.3,0.3,1]
+            init_acc_curv = [0,0,0,0,0]
+            x = [1,2,3,4,5]
+        else:
+            # interpolated_data_list = [interpolated_data_tar,interpolated_data_tar_adv,interpolated_data_tar_Pred,interpolated_data_ego]
+            data_list = [data_tar,data_adv,data_tar_pred,data_ego]
+            colors = ['red','yellow','m','blue']
+            alphas = [1,1,0.3,1]
+            init_acc_curv = [0,0,0,0]
+            x = [1,2,3,4]
+
+        control_action_list = []
+
+        for data in data_list:
+            control_action_list.append(Plot.control_action_interpolated_points(data,mask_values_X,flip_dimensions,dt))
+
+        control_action_list = np.array(control_action_list)
+        control_action_list = np.repeat(control_action_list[:,:,:,:-1,:],num_interpolations-1,axis=3)
+
+        acc_bar = ax_control_acc.bar(x, init_acc_curv, color=colors)
+        curv_bar = ax_control_curve.barh(x, init_acc_curv, color=colors)
+
+        for bar_acc,bar_curv, alpha in zip(acc_bar,curv_bar, alphas):
+            bar_acc.set_alpha(alpha)
+            bar_curv.set_alpha(alpha)
+
+        return acc_bar, curv_bar, control_action_list
+
+    @staticmethod
+    def plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y,dt,flip_dimensions,epsilon_acc,epsilon_curv):
         for i in range(X.shape[0]):
             num_interpolations = 5
+            dt_new = dt / (num_interpolations - 1)
             interpolated_data_tar = []
             interpolated_data_tar_Pred = []
             interpolated_data_tar_adv = []
@@ -172,13 +214,13 @@ class Plot:
             for j in range(X.shape[1]):
                 if j != X.shape[1]-1:
                     agent = 'target'
-                    data = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
-                    interpolated_data = Spline.interpolate_points(data, num_interpolations,agent,mask_values_X[i],mask_values_Y[i])
+                    data_tar = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
+                    interpolated_data = Spline.interpolate_points(data_tar, num_interpolations,agent,mask_values_X[i],mask_values_Y[i])
                     interpolated_data_tar.append(interpolated_data)
 
                     agent = 'adv'
-                    data = np.concatenate((X[i,j,:,:],Pred_iter_1[i,:,:]),axis=0)
-                    interpolated_data = Spline.interpolate_points(data, num_interpolations,agent)
+                    data_tar_pred = np.concatenate((X[i,j,:,:],Pred_iter_1[i,:,:]),axis=0)
+                    interpolated_data = Spline.interpolate_points(data_tar_pred, num_interpolations,agent)
                     interpolated_data_tar_Pred.append(interpolated_data)
 
                     data_adv = np.concatenate((X_new_pert[i,j,:,:],Pred_t[i,:,:]),axis=0)
@@ -192,8 +234,8 @@ class Plot:
 
                 else:
                     agent = 'ego'
-                    data = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
-                    interpolated_data = Spline.interpolate_points(data, num_interpolations,agent)
+                    data_ego = np.concatenate((X[i,j,:,:],Y[i,j,:,:]),axis=0)
+                    interpolated_data = Spline.interpolate_points(data_ego, num_interpolations,agent)
                     interpolated_data_ego.append(interpolated_data)
 
             # initialize the plot
@@ -201,10 +243,22 @@ class Plot:
             fig.suptitle(f'Example {i} of batch - Adversarial scene plot animated')
 
             # Create subplots
-            gs = gridspec.GridSpec(2, 4, figure=fig)
-            ax = fig.add_subplot(gs[0, :3])
-            ax1 = fig.add_subplot(gs[0, 3])
-            ax2 = fig.add_subplot(gs[1, :])
+            gs = gridspec.GridSpec(3, 4, figure=fig)
+            ax = fig.add_subplot(gs[1, :3])
+            ax1 = fig.add_subplot(gs[1, 3])
+            ax2 = fig.add_subplot(gs[2, :])
+            ax_control_acc = fig.add_subplot(gs[0, :2])
+            ax_control_curve = fig.add_subplot(gs[0, 2:])
+
+            # Acceleration animation
+            # Order of the bars
+            acc_bar, curv_bar, control_action_list = Plot.create_control_action_animation(data_adv_future,data_tar,data_adv,data_tar_pred,data_ego,mask_values_X,flip_dimensions,dt,num_interpolations,future_action,ax_control_acc,ax_control_curve)
+
+            ax_control_acc.set_ylim(-epsilon_acc, epsilon_acc)
+            ax_control_acc.set_title('Control action: Acceleration')
+
+            ax_control_curve.set_xlim(-epsilon_curv, epsilon_curv)
+            ax_control_curve.set_title('Control action: Curvature')
 
             # initialize the cars
             rectangles_tar_pred = Plot.add_rectangles(ax, interpolated_data_tar_Pred, 'm', r'Targent-agent ($\hat{Y}_{ego}$)', car_length, car_width,alpha=0.5)
@@ -224,6 +278,13 @@ class Plot:
                 Plot.update_box_position(interpolated_data_tar,rectangles_tar, car_length, car_width,num)
                 Plot.update_box_position(interpolated_data_tar_adv,rectangles_tar_adv, car_length, car_width,num) 
                 Plot.update_box_position(interpolated_data_ego,rectangles_ego, car_length, car_width,num)
+
+                for i in range(control_action_list.shape[0]):
+                    acc_bar[i].set_height(control_action_list[i,0,0,num,0])
+                    curv_bar[i].set_width(-control_action_list[i,0,0,num,1])
+
+                # acc_bar.set_height(control_action_list[:,0,0,num,0])
+                # curv_bar.set_width(control_action_list[:,0,0,num,1])
 
                 if future_action:
                     Plot.update_box_position(interpolated_data_tar_adv_future,rectangles_tar_adv_future, car_length, car_width,num)
@@ -245,7 +306,7 @@ class Plot:
             ax.set_title('Animation of the adversarial scene')
             
             ani = animation.FuncAnimation(fig, update, len(interpolated_data_tar[0])-1,
-                                        interval=100/num_interpolations, blit=False)
+                                        interval=dt_new*1000, blit=False)
             
             # Plot the second Figure
             Plot.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, Pred_iter_1, future_action,ax1,i)
@@ -455,5 +516,6 @@ class Plot:
 
         figure_input.hlines(y_solid,x_min_solid,x_max_solid, linestyle="solid", colors='k')
         figure_input.vlines(x_solid,y_min_solid,y_max_solid, linestyle="solid", colors='k')
+        
 
     

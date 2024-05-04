@@ -17,6 +17,8 @@ class perturbation_template():
 
 
     def perturb(self, data):
+        self.data = data
+
         Input_path  = data.Input_path
         Input_T     = data.Input_T
 
@@ -45,12 +47,8 @@ class perturbation_template():
         # Transform the data into numpy arrays
         Agents = np.array(Input_path.columns)
 
-        
-        
         X = np.ones(list(Input_path.shape) + [data.num_timesteps_in_real, 2], dtype = np.float32) * np.nan
         Y = np.ones(list(Output_path.shape) + [N_O.max(), 2], dtype = np.float32) * np.nan
-
-        
         
         # Extract data from original number a samples
         for i_sample, i_index in enumerate(Input_path.index):
@@ -75,10 +73,6 @@ class perturbation_template():
         self.set_batch_size()
         assert hasattr(self, 'batch_size'), "The batch size is not defined."
         assert isinstance(self.batch_size, int), "The given batch size must be an integer."
-        
-        mask_values = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.1
-
-    
 
         sorted_indices = np.argsort(-N_O)
 
@@ -105,15 +99,13 @@ class perturbation_template():
 
             if N_O_sort[samples].min() not in [14]:
                 continue
-            # TODO: Add images here
+            
             X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples])
-            # outputs = self.adversarial_smoothing(X_pert_sort[samples], X_sort[samples], Y_pert_sort[samples], Y_sort[samples], T_sort[samples], Domain_sort.iloc[samples])
 
 
         sort_indices_inverse = np.argsort(sorted_indices)
         X_pert = X_pert_sort[sort_indices_inverse]
         Y_pert = Y_pert_sort[sort_indices_inverse]
-
 
         # Add unperturberd input and output columns to Domain
         Domain['Unperturbed_input'] = None

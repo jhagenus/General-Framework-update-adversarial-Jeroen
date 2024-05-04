@@ -10,6 +10,7 @@ from Trajectron_old.environment.environment import Environment
 from attrdict import AttrDict
 
 import matplotlib.pyplot as plt
+from PIL import Image
 
 
 
@@ -693,10 +694,9 @@ class trajectron_salzmann_old_copy(model_template):
             
             self.save_predicted_batch_data(Pred_t, Sample_id, Agent_id)
 
-    def predict_batch_tensor(self,X,T,Domain,num_steps, num_samples = 20):
+    def predict_batch_tensor(self,X,T,Domain,img, img_m_per_px,num_steps,num_samples = 20):
 
         X = X.to(self.trajectron.device)
-        img = None
         self.trajectron.model_registrar.to(self.trajectron.device)
     
         S, S_St, first_h, Neighbor, Neighbor_edge, img, node_type, center_pos, rot_angle = self.extract_data_batch_tensor(X, T, None, img, num_steps)

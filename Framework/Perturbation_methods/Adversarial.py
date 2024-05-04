@@ -140,20 +140,20 @@ class Adversarial(perturbation_template):
 
         # settings
         # Plot input data and spline (if plot is True -> plot_spline can be set on True) 
-        plot_input = True
-        plot_spline = True
+        plot_input = False
+        plot_spline = False
 
         # Spline settings
         spline = True 
         spline_interval = 100
 
         # Plot the loss over the iterations
-        plot_loss = True
+        plot_loss = False
         loss_store = []
 
         # Plot the adversarial scene
         static_adv_scene = True
-        animated_adv_scene = True
+        animated_adv_scene = False
 
         # Car size
         car_length = 4.1
@@ -163,7 +163,7 @@ class Adversarial(perturbation_template):
         flip_dimensions = True
 
         # Initialize parameters
-        iter_num = 50
+        iter_num = 1
         epsilon_acc = 7
         epsilon_curv = 0.25
 
@@ -176,11 +176,11 @@ class Adversarial(perturbation_template):
         alpha_curv = 0.01
 
         # Randomized smoothing 
-        smooth_perturbed_data = True
-        smooth_unperturbed_data = True
+        smooth_perturbed_data = False
+        smooth_unperturbed_data = False
         num_samples = 10
         sigmas = [0.05,0.1]
-        plot_smoothing = True
+        plot_smoothing = False
         smoothing_method = 'control_action'   # 'position' or 'control_action'
 
         # remove nan from input and remember old shape
@@ -233,6 +233,9 @@ class Adversarial(perturbation_template):
         distance_threshold = 1
         log_value = 1.2
 
+        # Load images 
+        img, img_m_per_px = self.load_images(X,Domain)
+
         # Check edge case scenarios where agent is standing still
         mask_values_X, mask_values_Y = Helper.masked_data(X, Y)
         
@@ -278,7 +281,7 @@ class Adversarial(perturbation_template):
             num_steps = Y.shape[2]
                 
             # Forward pass through the model
-            Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain, num_steps)
+            Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain,img, img_m_per_px,num_steps)
 
             # Store the first prediction
             if i == 0:
@@ -375,7 +378,11 @@ class Adversarial(perturbation_template):
                 X_unpert_smoothed, 
                 Pred_unpert_smoothed,
                 sigmas,
-                smoothing_method
+                smoothing_method,
+                dt,
+                flip_dimensions,
+                epsilon_acc,
+                epsilon_curv
             )
 
         # Return Y to old shape
@@ -387,6 +394,40 @@ class Adversarial(perturbation_template):
             Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
         
         return X_new_pert, Y_new_pert
+
+    def load_images(self,X,Domain):
+        Img_needed = np.zeros(X.shape[:2], bool)
+        Img_needed[:,1] = True
+        # if self.data.includes_images():
+
+        image = True
+        
+        if self.data.includes_images():
+            if self.pert_model.grayscale:
+                channels = 1
+            else:
+                channels = 3
+            img          = np.zeros((*Img_needed.shape, self.pert_model.target_height, self.pert_model.target_width, channels), np.uint8)
+            img_m_per_px = np.ones(Img_needed.shape, np.float32) * np.nan
+
+            centre = X[Img_needed, -1,:]
+            x_rel = centre - X[Img_needed, -2,:]
+            rot = np.angle(x_rel[:,0] + 1j * x_rel[:,1]) 
+            domain_needed = Domain.iloc[np.where(Img_needed)[0]]
+            
+
+            img[Img_needed] = self.data.return_batch_images(domain_needed, centre, rot,
+                                                            target_height = self.pert_model.target_height, 
+                                                            target_width = self.pert_model.target_width,
+                                                            grayscale = self.pert_model.grayscale,
+                                                            Imgs_rot = img[Img_needed],
+                                                            Imgs_index = np.arange(Img_needed.sum()))
+            img_m_per_px[Img_needed] = self.data.Images.Target_MeterPerPx.loc[Domain.image_id.iloc[Img_needed]]
+        else:
+            img = None
+            img_m_per_px = None
+
+        return img, img_m_per_px
     
     def create_data_plot(self, X, Y, agent, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline, plot_input, plot_spline):
         # Flip the dimensions of the data if required

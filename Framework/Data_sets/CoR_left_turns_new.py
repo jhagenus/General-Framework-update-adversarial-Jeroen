@@ -5,8 +5,6 @@ from scenario_gap_acceptance import scenario_gap_acceptance
 import os
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
-from PIL import Image
-from pathlib import Path
 
 
 class CoR_left_turns(data_set_template):
@@ -40,22 +38,6 @@ class CoR_left_turns(data_set_template):
         self.T = []
         self.Domain_old = []
         agents = ['ego', 'tar']
-
-        x_center = 163.6
-        y_center = 50
-        rot_angle = None
-        px_per_meter = 10
-
-        self.Images = pd.DataFrame(np.zeros((1, 2), object), columns = ['Image', 'Target_MeterPerPx'])
-
-        image_path = f"{Path(__file__).parent}/CoR_left_turns/Image/image_scene_prediction_model_new.png"
-        image = Image.open(image_path)
-        rgb_image = image.convert('RGB')
-        img = np.array(rgb_image, dtype=np.uint8)
-
-        self.Images.loc[0].Image = img
-        self.Images.loc[0].Target_MeterPerPx = 1/px_per_meter
-
         # extract raw samples
         for i in range(self.num_samples):
             path = pd.Series(np.empty(len(agents), np.ndarray), index = agents)
@@ -69,14 +51,8 @@ class CoR_left_turns(data_set_template):
             path.ego = ego
             path.tar = tar
             
-            domain = pd.Series([int(self.Data.subj_id.iloc[i]),
-                                x_center,
-                                y_center,
-                                rot_angle,
-                                self.Images.index[0]
-                                ], index = ['Subj_ID','x_center','y_center','rot_angle', 'image_id'])
-            
-            # domain = pd.Series(np.ones(1, int) * self.Data.subj_id.iloc[i], index = ['Subj_ID'])
+            domain = pd.Series(np.ones(1, int) * self.Data.subj_id.iloc[i], index = ['Subj_ID'])
+
             
             self.Path.append(path)
             self.Type_old.append(agent_type)
@@ -87,6 +63,10 @@ class CoR_left_turns(data_set_template):
         self.Type_old = pd.DataFrame(self.Type_old)
         self.T = np.array(self.T+[()], np.ndarray)[:-1]
         self.Domain_old = pd.DataFrame(self.Domain_old)
+
+
+
+
   
 
     def calculate_distance(self, path, t, domain):
@@ -246,7 +226,7 @@ class CoR_left_turns(data_set_template):
             return True
     
     def includes_images(self = None):
-        return True
+        return False
 
 test = CoR_left_turns()
 
