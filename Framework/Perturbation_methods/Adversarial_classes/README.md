@@ -86,7 +86,7 @@ To utilize the ADE loss function, set:
 ADE_loss = True
 ```
 ### Loss - Average Displacement Error (new) - Ground truth
-$l_{\text{ADE\;(new)}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - \tilde{Y}_{\text{tar}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2$ <br />
+$$l_{\text{ADE\;(new)}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - \tilde{Y}_{\text{tar}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2$$ <br />
 To utilize the ADE loss function using a perturbed future ($\tilde{Y}{tar}$) closely resembling the ground truth future ($\hat{Y}_{tar}$), set:
 ```
 ADE_loss_adv_future_GT = True
