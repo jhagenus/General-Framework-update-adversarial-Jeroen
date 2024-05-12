@@ -142,20 +142,20 @@ class Adversarial(perturbation_template):
 
         # settings
         # Plot input data and spline (if plot is True -> plot_spline can be set on True) 
-        plot_input = False
-        plot_spline = False
+        plot_input = True
+        plot_spline = True
 
         # Spline settings
         spline = True 
         spline_interval = 100
 
         # Plot the loss over the iterations
-        plot_loss = False
+        plot_loss = True
         loss_store = []
 
         # Plot the adversarial scene
-        static_adv_scene = False
-        animated_adv_scene = False
+        static_adv_scene = True
+        animated_adv_scene = True
 
         # Setting animated scene
         control_action_bar = False
@@ -177,7 +177,7 @@ class Adversarial(perturbation_template):
 
         # Initialize parameters
         num_samples = 20 # Defined as (K) in paper
-        iter_num = 1
+        iter_num = 20
         epsilon_acc = 6
         epsilon_curv = 0.2
 
