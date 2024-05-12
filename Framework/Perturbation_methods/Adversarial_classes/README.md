@@ -48,7 +48,9 @@ distance_threshold = 1
 ```
 **Note:** Only one can be set to True. When both are set to False, no barrier function is utilized.
 ### Barrier - Ground truth
-$$r_{\text{barrier}} = -\frac{1}{H} \sum_{t=1 \dots H} \log ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{t} -  X_{\text{tar}}^{t} \right\|_2)$$
+$$
+r_{\text{barrier}} = -\frac{1}{H} \sum_{t=1}^{H} \log \left( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{t} -  X_{\text{tar}}^{t} \right\|_2 \right)
+$$ <br />
 To utilize the regularization term for the observed states ($X{tar}$), two settings are available:
 
 - To utilize this barrier function, set:
