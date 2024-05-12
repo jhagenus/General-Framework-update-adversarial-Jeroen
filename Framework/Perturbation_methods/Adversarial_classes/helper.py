@@ -162,3 +162,22 @@ class Helper:
             Y_new_adv = Y
 
         return X_new, Y_new, X_new_adv, Y_new_adv
+    
+    @staticmethod
+    def retrieve_name_attack(ADE_loss,ADE_loss_adv_future_GT,ADE_loss_adv_future_pred,collision_loss,fake_collision_loss_GT,fake_collision_loss_Pred,hide_collision_loss_GT,hide_collision_loss_Pred):
+         # Dictionary to hold the variables and their names
+        variables = {
+            "ADE_loss": ADE_loss,
+            "ADE_loss_adv_future_GT": ADE_loss_adv_future_GT,
+            "ADE_loss_adv_future_pred": ADE_loss_adv_future_pred,
+            "collision_loss": collision_loss,
+            "fake_collision_loss_GT": fake_collision_loss_GT,
+            "fake_collision_loss_Pred": fake_collision_loss_Pred,
+            "hide_collision_loss_GT": hide_collision_loss_GT,
+            "hide_collision_loss_Pred": hide_collision_loss_Pred,
+        }
+
+        # Loop through the dictionary and return the name of the variable that is True
+        for name, value in variables.items():
+            if value:
+                return name

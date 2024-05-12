@@ -5,6 +5,7 @@ import matplotlib.patches as patches
 from matplotlib.patches import FancyArrowPatch
 from matplotlib import gridspec
 import torch
+from pathlib import Path
 
 from Adversarial_classes.helper import Helper
 from Adversarial_classes.spline import Spline
@@ -12,7 +13,7 @@ from Adversarial_classes.control_action import Control_action
 
 class Plot:
     @staticmethod
-    def plot_results(X, X_new_pert, Y, Y_new_pert, Pred_t, Pred_iter_1, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width,mask_values_X,mask_values_Y,plot_smoothing,X_pert_smoothed,Pred_pert_smoothed,X_unpert_smoothed,Pred_unpert_smoothed,sigmas,smoothing_method,dt,flip_dimensions,epsilon_acc,epsilon_curv):
+    def plot_results(X, X_new_pert, Y, Y_new_pert, Pred_t, Pred_iter_1, loss_store, plot_loss, future_action,static_adv_scene,animated_adv_scene,car_length,car_width,mask_values_X,mask_values_Y,plot_smoothing,X_pert_smoothed,Pred_pert_smoothed,X_unpert_smoothed,Pred_unpert_smoothed,sigmas,smoothing_method,dt,flip_dimensions,epsilon_acc,epsilon_curv,control_action_bar,control_action_graph,wheelbase,Name_attack):
         # Plot the loss over the iterations
         if plot_loss:
             Plot.plot_loss_over_iterations(loss_store)
@@ -23,7 +24,7 @@ class Plot:
 
         # Plot the animated adversarial scene  
         if animated_adv_scene:
-            Plot.plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y,dt,flip_dimensions,epsilon_acc,epsilon_curv)
+            Plot.plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y,dt,flip_dimensions,epsilon_acc,epsilon_curv,control_action_bar,control_action_graph,wheelbase,Name_attack)
 
         # Plot the randomized smoothing
         if plot_smoothing:
@@ -166,18 +167,18 @@ class Plot:
         control_action,_,_ = Control_action.Reversed_Dynamical_Model(control_action_tensor, mask_values_X, flip_dimensions, control_action_tensor,dt)
         return control_action.cpu().detach().numpy()
     
-    def create_control_action_animation(data_adv_future,data_tar,data_adv,data_tar_pred,data_ego,mask_values_X,flip_dimensions,dt,num_interpolations,future_action,ax_control_acc,ax_control_curve):
+    def create_control_action_animation(data_adv_future,data_tar,data_adv,data_tar_pred,data_ego,mask_values_X,flip_dimensions,dt,num_interpolations,future_action,ax_control_acc,ax_control_curve,control_action_bar,control_action_graph):
         if future_action:
             # interpolated_data_list = [interpolated_data_tar_adv_future,interpolated_data_tar,interpolated_data_tar_adv,interpolated_data_tar_Pred,interpolated_data_ego]
-            data_list = [data_adv_future,data_tar,data_adv,data_tar_pred,data_ego]
-            colors = ['red','yellow','red','m','blue']
+            data_list = [data_tar,data_adv_future,data_adv,data_tar_pred,data_ego]
+            colors = ['yellow','red','red','m','blue']
             alphas = [1,1,0.3,0.3,1]
             init_acc_curv = [0,0,0,0,0]
             x = [1,2,3,4,5]
         else:
             # interpolated_data_list = [interpolated_data_tar,interpolated_data_tar_adv,interpolated_data_tar_Pred,interpolated_data_ego]
             data_list = [data_tar,data_adv,data_tar_pred,data_ego]
-            colors = ['red','yellow','m','blue']
+            colors = ['yellow','red','m','blue']
             alphas = [1,1,0.3,1]
             init_acc_curv = [0,0,0,0]
             x = [1,2,3,4]
@@ -190,17 +191,34 @@ class Plot:
         control_action_list = np.array(control_action_list)
         control_action_list = np.repeat(control_action_list[:,:,:,:-1,:],num_interpolations-1,axis=3)
 
-        acc_bar = ax_control_acc.bar(x, init_acc_curv, color=colors)
-        curv_bar = ax_control_curve.barh(x, init_acc_curv, color=colors)
+        if control_action_bar:
+            acc_animation_1 = ax_control_acc.bar(x, init_acc_curv, color='red')
+            curv_animation_1 = ax_control_curve.barh(x, init_acc_curv, color='red')
+            acc_animation_2 = None
+            curv_animation_2 = None
 
-        for bar_acc,bar_curv, alpha in zip(acc_bar,curv_bar, alphas):
-            bar_acc.set_alpha(alpha)
-            bar_curv.set_alpha(alpha)
+            for bar_acc,bar_curv, alpha in zip(acc_animation_1,curv_animation_1, alphas):
+                bar_acc.set_alpha(alpha)
+                bar_curv.set_alpha(alpha)
 
-        return acc_bar, curv_bar, control_action_list
+        num_count = np.arange(0,control_action_list.shape[3],1)
+        
+        y_acc_1 = control_action_list[0,0,0,:,0]
+        y_curv_1 = control_action_list[0,0,0,:,1]
+        y_acc_2 = control_action_list[1,0,0,:,0]
+        y_curv_2 = control_action_list[1,0,0,:,1]
+        
+        if control_action_graph:
+            # collect the correct dat
+            acc_animation_1 = ax_control_acc.plot(num_count, y_acc_1, color='yellow')
+            curv_animation_1 = ax_control_curve.plot(num_count, y_curv_1, color='yellow')
+            acc_animation_2 = ax_control_acc.plot(num_count, y_acc_2, color='red')
+            curv_animation_2 = ax_control_curve.plot(num_count, y_curv_2, color='red')
+
+        return acc_animation_1, curv_animation_1, acc_animation_2, curv_animation_2, control_action_list, num_count, y_acc_1, y_curv_1, y_acc_2, y_curv_2
 
     @staticmethod
-    def plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y,dt,flip_dimensions,epsilon_acc,epsilon_curv):
+    def plot_animated_adv_scene(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,car_length,car_width,mask_values_X,mask_values_Y,dt,flip_dimensions,epsilon_acc,epsilon_curv,control_action_bar,control_action_graph,wheelbase,Name_attack):
         for i in range(X.shape[0]):
             num_interpolations = 5
             dt_new = dt / (num_interpolations - 1)
@@ -231,6 +249,8 @@ class Plot:
                         data_adv_future = np.concatenate((X_new_pert[i,j,:,:],Y_new_pert[i,j,:,:]),axis=0)
                         interpolated_data_adv_future = Spline.interpolate_points(data_adv_future, num_interpolations,agent)
                         interpolated_data_tar_adv_future.append(interpolated_data_adv_future)
+                    else:
+                        data_adv_future = None
 
                 else:
                     agent = 'ego'
@@ -243,22 +263,37 @@ class Plot:
             fig.suptitle(f'Example {i} of batch - Adversarial scene plot animated')
 
             # Create subplots
-            gs = gridspec.GridSpec(3, 4, figure=fig)
-            ax = fig.add_subplot(gs[1, :3])
-            ax1 = fig.add_subplot(gs[1, 3])
-            ax2 = fig.add_subplot(gs[2, :])
-            ax_control_acc = fig.add_subplot(gs[0, :2])
-            ax_control_curve = fig.add_subplot(gs[0, 2:])
+            if control_action_bar or control_action_graph:
+                gs = gridspec.GridSpec(3, 4, figure=fig)
+                ax = fig.add_subplot(gs[1, :3])
+                ax1 = fig.add_subplot(gs[1, 3])
+                ax2 = fig.add_subplot(gs[2, :])
+                ax_control_acc = fig.add_subplot(gs[0, :2])
+                ax_control_curve = fig.add_subplot(gs[0, 2:])
+            else:
+                gs = gridspec.GridSpec(2, 4, figure=fig)
+                ax = fig.add_subplot(gs[0, :3])
+                ax1 = fig.add_subplot(gs[0, 3])
+                ax2 = fig.add_subplot(gs[1, :])
+            
+            # Initialize the control action animation
+            if control_action_bar or control_action_graph:
+                acc_animated_1, curv_animated_1, acc_animated_2, curv_animated_2, control_action_list, num_count, y_acc_1, y_curv_1, y_acc_2, y_curv_2 = Plot.create_control_action_animation(data_adv_future,data_tar,data_adv,data_tar_pred,data_ego,mask_values_X,flip_dimensions,dt,num_interpolations,future_action,ax_control_acc,ax_control_curve,control_action_bar,control_action_graph)
 
-            # Acceleration animation
-            # Order of the bars
-            acc_bar, curv_bar, control_action_list = Plot.create_control_action_animation(data_adv_future,data_tar,data_adv,data_tar_pred,data_ego,mask_values_X,flip_dimensions,dt,num_interpolations,future_action,ax_control_acc,ax_control_curve)
+                # set limits to acceleration plot
+                ax_control_acc.set_xlim(0, (X.shape[2]-2)*(num_interpolations-1))
+                ax_control_acc.set_ylim(-epsilon_acc, epsilon_acc)
+                ax_control_acc.set_title(r'Control action $X^{t}_{tar}$: Acceleration')
+                ax_control_acc.set(xticks=np.arange(0, (X.shape[2]-2)*(num_interpolations-1), num_interpolations-1), xticklabels=np.arange(1, (X.shape[2]-1)))
 
-            ax_control_acc.set_ylim(-epsilon_acc, epsilon_acc)
-            ax_control_acc.set_title('Control action: Acceleration')
-
-            ax_control_curve.set_xlim(-epsilon_curv, epsilon_curv)
-            ax_control_curve.set_title('Control action: Curvature')
+                # set limits to curvature plot
+                if control_action_bar:
+                    ax_control_curve.set_xlim(-np.arctan(epsilon_curv*wheelbase), np.arctan(epsilon_curv*wheelbase))
+                if control_action_graph:
+                    ax_control_curve.set_xlim(0, (X.shape[2]-2)*(num_interpolations-1))
+                    ax_control_curve.set(xticks=np.arange(0, (X.shape[2]-2)*(num_interpolations-1), num_interpolations-1), xticklabels=np.arange(1, (X.shape[2]-1)))
+                    ax_control_curve.set_ylim(-np.arctan(epsilon_curv*wheelbase), np.arctan(epsilon_curv*wheelbase))
+                ax_control_curve.set_title(r'Control action $X^{t}_{tar}$: Steering angle')
 
             # initialize the cars
             rectangles_tar_pred = Plot.add_rectangles(ax, interpolated_data_tar_Pred, 'm', r'Targent-agent ($\hat{Y}_{ego}$)', car_length, car_width,alpha=0.5)
@@ -271,20 +306,29 @@ class Plot:
             else: 
                 rectangles_tar_adv = Plot.add_rectangles(ax,interpolated_data_tar_adv, 'red', r'Adversarial prediction ($\tilde{X}_{tar}$ and $\hat{\tilde{Y}}_{tar}$)', car_length, car_width, alpha=1)
             
+            num_count = np.arange(0,len(interpolated_data_tar[0])-1,1)
             # Function to update the animated plot
-            def update(num):
+            def update(num,num_count, y_acc_1, y_curv_1, y_acc_2, y_curv_2):
                 # Update the location of the car
                 Plot.update_box_position(interpolated_data_tar_Pred,rectangles_tar_pred, car_length, car_width,num)
                 Plot.update_box_position(interpolated_data_tar,rectangles_tar, car_length, car_width,num)
                 Plot.update_box_position(interpolated_data_tar_adv,rectangles_tar_adv, car_length, car_width,num) 
                 Plot.update_box_position(interpolated_data_ego,rectangles_ego, car_length, car_width,num)
 
-                for i in range(control_action_list.shape[0]):
-                    acc_bar[i].set_height(control_action_list[i,0,0,num,0])
-                    curv_bar[i].set_width(-control_action_list[i,0,0,num,1])
+                if control_action_bar or control_action_graph:
+                    # Update the control action in animation
+                    if acc_animated_2 is None:
+                        for i in range(control_action_list.shape[0]):
+                            acc_animated_1[i].set_height(control_action_list[i,0,0,num,0])
+                            curv_animated_1[i].set_width(-control_action_list[i,0,0,num,1])
+                    else:
+                        # Update the control action in animation acceleration
+                        acc_animated_1[0].set_data(num_count[:num],y_acc_1[:num])
+                        curv_animated_1[0].set_data(num_count[:num],np.arctan(y_curv_1[:num]*wheelbase))
 
-                # acc_bar.set_height(control_action_list[:,0,0,num,0])
-                # curv_bar.set_width(control_action_list[:,0,0,num,1])
+                        # Update the control action in animation curvature
+                        acc_animated_2[0].set_data(num_count[:num],y_acc_2[:num])
+                        curv_animated_2[0].set_data(num_count[:num],np.arctan(y_curv_2[:num]*wheelbase))
 
                 if future_action:
                     Plot.update_box_position(interpolated_data_tar_adv_future,rectangles_tar_adv_future, car_length, car_width,num)
@@ -299,13 +343,17 @@ class Plot:
             Plot.plot_road_lines(-100, 20, -30, 20, offset,ax)
 
             # Set the plot limits
-            ax.set_xlim(-100, 10) 
-            ax.set_ylim(-30, 10)
+            if control_action_bar or control_action_graph:
+                ax.set_xlim(-100, 10) 
+                ax.set_ylim(-20, 5)
+            else:
+                ax.set_xlim(-100, 10) 
+                ax.set_ylim(-30, 10)
             ax.set_aspect('equal')
             ax.legend(loc='lower left')
             ax.set_title('Animation of the adversarial scene')
             
-            ani = animation.FuncAnimation(fig, update, len(interpolated_data_tar[0])-1,
+            ani = animation.FuncAnimation(fig, update, len(interpolated_data_tar[0])-1,fargs = [num_count, y_acc_1, y_curv_1, y_acc_2, y_curv_2],
                                         interval=dt_new*1000, blit=False)
             
             # Plot the second Figure
@@ -324,16 +372,26 @@ class Plot:
             Plot.plot_data_with_adv(X, X_new_pert, Y, Y_new_pert, Pred_t, Pred_iter_1, future_action,ax2,i)
 
             # Plot the rectangle for zoom
+            
             ax2.add_patch(patches.Rectangle((2, -2), 8, 6, edgecolor='black', facecolor='none', linestyle='dashed', linewidth=1))
+            
 
             # include pointer
             # Adding an arrow to point from figure to figure
-            arrow = FancyArrowPatch((0.85, 0.40), (0.81, 0.60),
-                                    transform=fig.transFigure,  
-                                    mutation_scale=20,         
-                                    lw=1,                       
-                                    arrowstyle="-|>",           
-                                    color='black')             
+            if control_action_bar or control_action_graph:
+                arrow = FancyArrowPatch((0.87, 0.30), (0.83, 0.40),
+                                        transform=fig.transFigure,  
+                                        mutation_scale=20,         
+                                        lw=1,                       
+                                        arrowstyle="-|>",           
+                                        color='black') 
+            else:  
+                arrow = FancyArrowPatch((0.85, 0.40), (0.81, 0.60),
+                                        transform=fig.transFigure,  
+                                        mutation_scale=20,         
+                                        lw=1,                       
+                                        arrowstyle="-|>",           
+                                        color='black')           
 
             fig.patches.extend([arrow])
 
@@ -342,14 +400,20 @@ class Plot:
             Plot.plot_road_lines(-100, 20, -30, 20, offset,ax2)
 
             # Set the plot limits
-            ax2.set_xlim(-80, 10) 
-            ax2.set_ylim(-15, 5)
+            if control_action_bar or control_action_graph:
+                ax2.set_xlim(-110, 10) 
+                ax2.set_ylim(-12.5, 5)
+            else:
+                ax2.set_xlim(-80, 10) 
+                ax2.set_ylim(-15, 5)
             ax2.legend(loc='lower left')
             ax2.set_aspect('equal')
             ax2.set_title('Adversarial scene static')
 
-            ani.save(f'basic_animation_new-{np.random.rand(1)}.mp4')
-                        
+            # ani.save(f'{Path(__file__).parent}/Animations/Animation_scene_{Name_attack}-{np.random.rand(1)}.mp4')
+            ani.save(f'Animation_scene_{Name_attack}-{np.random.rand(1)}.mp4')
+
+                    
             plt.show()
 
     @staticmethod
@@ -390,69 +454,87 @@ class Plot:
 
             if j == 0:
                 if style == 'unperturbed':
-                    if smoothing_method == 'positio':
-                        for k in range(Pred_unpert_smoothed.shape[1]):
-                            Plot.draw_arrow(X[index,0,:], Pred_unpert_smoothed[index_sigma,k,index,:], figure_input, 'c', 3,'-','-', None,None, 0, 0.4)
+                    if smoothing_method == 'position':
+                        for k in range(Pred_unpert_smoothed.shape[2]):
+                            Plot.draw_arrow(X[index,0,:], Pred_unpert_smoothed[index_sigma,index,k,:], figure_input, 'c', 3,'-','-', None,None, 0, 0.4)
                         
-                        Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                        Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=0)
                         Plot.draw_arrow(X[index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-','-', None,None, 0, 1)
                     else:
-                        for k in range(Pred_unpert_smoothed.shape[1]):
-                            Plot.draw_arrow(X_unpert_smoothed[index_sigma,k,index,0,:], Pred_unpert_smoothed[index_sigma,k,index,:], figure_input, 'c', 3,'-.','-', None,None, 0.4, 0.4)
+                        for k in range(Pred_pert_smoothed.shape[2]):
+                            Plot.draw_arrow(X_unpert_smoothed[k,index_sigma,index,0,:], Pred_unpert_smoothed[index_sigma,index,k,:], figure_input, 'c', 3,'-.','-', None,None, 0.4, 0.4)
 
-                        average_X_unpert_smoothed = np.mean(X_unpert_smoothed,axis=1)
-                        Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                        # calculate the expectation of the unperturbed data
+                        average_X_unpert_smoothed = np.mean(X_unpert_smoothed,axis=0)
+
+                        # calculate the expectation of all predictions 
+                        Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=2)
                         Plot.draw_arrow(average_X_unpert_smoothed[index_sigma,index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-.','-', None,None, 1, 1)
 
                 elif style == 'perturbed':
                     if smoothing_method == 'position':
-                        for k in range(Pred_pert_smoothed.shape[1]):
-                            Plot.draw_arrow(X_new_pert[index,0,:], Pred_pert_smoothed[index_sigma,k,index,:], figure_input, 'g', 3,'-','-', None,None, 0, 0.4)
+                        for k in range(Pred_pert_smoothed.shape[2]):
+                            Plot.draw_arrow(X_new_pert[index,0,:], Pred_pert_smoothed[index_sigma,index,k,:], figure_input, 'g', 3,'-','-', None,None, 0, 0.4)
                         
-                        Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                        # calculate the expectation of all predictions
+                        Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=2)
                         Plot.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,None, 0, 1)
                     else:
-                        for k in range(Pred_pert_smoothed.shape[1]):
-                            Plot.draw_arrow(X_pert_smoothed[index_sigma,k,index,0,:], Pred_pert_smoothed[index_sigma,k,index,:], figure_input, 'g', 3,'-.','-', None,None, 0.4, 0.4)
+                        for k in range(Pred_pert_smoothed.shape[2]):
+                            Plot.draw_arrow(X_pert_smoothed[k,index_sigma,index,0,:], Pred_pert_smoothed[index_sigma,index,k,:], figure_input, 'g', 3,'-.','-', None,None, 0.4, 0.4)
 
-                        average_X_pert_smoothed = np.mean(X_pert_smoothed,axis=1)
-                        Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                        # calculate the expectation of the perturbed data
+                        average_X_pert_smoothed = np.mean(X_pert_smoothed,axis=0)
+
+                        # calculate the expectation of all predictions
+                        Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=2)
                         Plot.draw_arrow(average_X_pert_smoothed[index_sigma,index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-.','-', None,None, 1, 1)
 
                 elif style == 'adv_smoothed':
                     if smoothing_method == 'position':
                         if Pred_unpert_smoothed is not None and Pred_pert_smoothed is None:
-                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                            # calculate the expectation of all predictions
+                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=2)
                             Plot.draw_arrow(X_new_pert[index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-','-', None,r'Smoothed target agent ($\bar{X}_{tar}$)', 0, 1)
                         
                         elif Pred_unpert_smoothed is None and Pred_pert_smoothed is not None:
-                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                            # calculate the expectation of all predictions
+                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=2)
                             Plot.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,r'Smoothed adversarial target agent ($\bar{\tilde{X}}_{tar}$)', 0, 1)
                         else:
-                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                            # calculate the expectation of all predictions
+                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=2)
                             Plot.draw_arrow(X[index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-','-', None,r'Smoothed target agent ($\bar{X}_{tar}$)', 0, 1)
 
-                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                            # calculate the expectation of all predictions
+                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=2)
                             Plot.draw_arrow(X_new_pert[index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-','-', None,r'Smoothed adversarial target agent ($\bar{\tilde{X}}_{tar}$)', 0, 1)
                     else:
                         if Pred_unpert_smoothed is not None and Pred_pert_smoothed is None:
-                            average_X_unpert_smoothed = np.mean(X_unpert_smoothed,axis=1)
-                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                            # calculate the expectation of the unperturbed data
+                            average_X_unpert_smoothed = np.mean(X_unpert_smoothed,axis=0)
+                            # calculate the expectation of all predictions 
+                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=2)
                             Plot.draw_arrow(average_X_unpert_smoothed[index_sigma,index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-.','-', r'Smoothed target agent ($\bar{X}_{tar}$)',r'Smoothed prediction target agent ($\hat{\bar{Y}}_{tar}$)', 1, 0.5)
                         
                         elif Pred_unpert_smoothed is None and Pred_pert_smoothed is not None:
-                            average_X_pert_smoothed = np.mean(X_pert_smoothed,axis=1)
-                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                            # calculate the expectation of the perturbed data
+                            average_X_pert_smoothed = np.mean(X_pert_smoothed,axis=0)
+                            # calculate the expectation of all predictions
+                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=2)
                             Plot.draw_arrow(average_X_pert_smoothed[index_sigma,index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-.','-', r'Smoothed adversarial target agent ($\bar{\tilde{X}}_{tar}$)',r'Smoothed adversarial prediction target agent ($\hat{\bar{\tilde{Y}}}_{tar}$)', 1, 0.5)
                         else:
-                            average_X_unpert_smoothed = np.mean(X_unpert_smoothed,axis=1)
-                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=1)
+                            # calculate the expectation of the unperturbed data
+                            average_X_unpert_smoothed = np.mean(X_unpert_smoothed,axis=0)
+                            # calculate the expectation of all predictions 
+                            Average_Pred_unpert_smoothed = np.mean(Pred_unpert_smoothed,axis=2)
                             Plot.draw_arrow(average_X_unpert_smoothed[index_sigma,index,0,:], Average_Pred_unpert_smoothed[index_sigma,index,:], figure_input, 'c', 3,'-.','-', r'Smoothed target agent ($\bar{X}_{tar}$)',r'Smoothed prediction target agent ($\hat{\bar{Y}}_{tar}$)', 1, 0.5)
 
-                            average_X_pert_smoothed = np.mean(X_pert_smoothed,axis=1)
-                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=1)
+                            # calculate the expectation of the perturbed data
+                            average_X_pert_smoothed = np.mean(X_pert_smoothed,axis=0)
+                            # calculate the expectation of all predictions
+                            Average_Pred_pert_smoothed = np.mean(Pred_pert_smoothed,axis=2)
                             Plot.draw_arrow(average_X_pert_smoothed[index_sigma,index,0,:], Average_Pred_pert_smoothed[index_sigma,index,:], figure_input, 'g', 3,'-.','-', r'Smoothed adversarial target agent ($\bar{\tilde{X}}_{tar}$)',r'Smoothed adversarial prediction target agent ($\hat{\bar{\tilde{Y}}}_{tar}$)', 1, 0.5)
-
 
     @staticmethod
     def draw_arrow(data_X, data_Y, figure_input, color, linewidth,line_style_input,line_style_output, label_input,label_output,alpha_input,alpha_output):

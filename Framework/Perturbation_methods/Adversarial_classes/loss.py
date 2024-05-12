@@ -7,51 +7,54 @@ class Loss:
         # Add  regularization loss to adversarial input using barrier function
         if log_barrier:
             barrier_output = Loss.barrier_log_function(distance_threshold, X_new, X, log_value)
+            barrier_output_check = True
         elif ADVDO_barrier:
             barrier_output = Loss.AVDDO_barrier_function(X_new, X, distance_threshold)
+            barrier_output_check = True
         elif spline_barrier:
             barrier_output = Loss.barrier_log_function_spline(distance_threshold, X_new, spline_data, log_value)
+            barrier_output_check = True
         else:
-            barrier_output = False
+            barrier_output_check = False
             
         # Calculate the total loss
         if ADE_loss:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = -Loss.ADE_loss_function(Y, Pred_t)
             else:
                 losses = -Loss.ADE_loss_function(Y, Pred_t) - barrier_output
         elif ADE_loss_adv_future_GT:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y)
             else:
                 losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y) - barrier_output
         elif ADE_loss_adv_future_pred:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1)
             else:
                 losses = -Loss.ADE_adv_future_pred(Y_new, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1) - barrier_output
         elif collision_loss:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = Loss.collision_loss_function(Y, Pred_t)
             else:
                 losses = Loss.collision_loss_function(Y, Pred_t) - barrier_output
         elif fake_collision_loss_GT:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y)
             else:
                 losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_GT(Y_new, Y) - barrier_output 
         elif fake_collision_loss_Pred:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1)
             else:
                 losses = Loss.collision_loss_function(Y, Pred_t) + Loss.ADE_adv_future_pred_iter_1(Y_new, Pred_iter_1) - barrier_output
         elif hide_collision_loss_GT:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_loss_function(Y, Pred_t) 
             else:
                 losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_loss_function(Y, Pred_t) - barrier_output
         elif hide_collision_loss_Pred:
-            if not barrier_output:
+            if not barrier_output_check:
                 losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_pred_pred_iter_1(Pred_t, Pred_iter_1)
             else:
                 losses = Loss.collision_loss_adv_future(Y_new, Y) + Loss.ADE_pred_pred_iter_1(Pred_t, Pred_iter_1) - barrier_output

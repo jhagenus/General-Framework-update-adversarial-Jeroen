@@ -42,8 +42,8 @@ class CoR_left_turns(data_set_template):
         agents = ['ego', 'tar']
 
         x_center = 163.6
-        y_center = 50
-        rot_angle = None
+        y_center = -50
+        rot_angle = 0
         px_per_meter = 10
 
         self.Images = pd.DataFrame(np.zeros((1, 2), object), columns = ['Image', 'Target_MeterPerPx'])
@@ -63,8 +63,22 @@ class CoR_left_turns(data_set_template):
             
             t_index = self.Data.bot_track.iloc[i].index
             t = np.array(self.Data.bot_track.iloc[i].t[t_index])
-            ego = np.stack([savgol_filter(self.Data.bot_track.iloc[i].x[t_index],100,3), self.Data.bot_track.iloc[i].y[t_index]], -1)
-            tar = np.stack([self.Data.ego_track.iloc[i].x[t_index], self.Data.ego_track.iloc[i].y[t_index]], -1)
+            ego = np.stack([savgol_filter(self.Data.bot_track.iloc[i].x[t_index],150,3), np.ones_like(self.Data.bot_track.iloc[i].y[t_index]) * -1.75], -1)
+            tar = np.stack([savgol_filter(self.Data.ego_track.iloc[i].x[t_index],50,3), savgol_filter(self.Data.ego_track.iloc[i].y[t_index],50,3)], -1)
+
+            # plt.figure(1)
+            # plt.plot(np.diff(tar[:,0]))
+            # # plt.plot(np.diff(self.Data.ego_track.iloc[i].x[t_index]))
+
+            # plt.figure(2)
+            # plt.plot(np.diff(tar[:,1]))
+            # # plt.plot(np.diff(self.Data.ego_track.iloc[i].y[t_index]))
+
+            # plt.figure(3)
+            # plt.plot(np.diff(ego[:,0]))
+            # # plt.plot(np.diff(self.Data.bot_track.iloc[i].x[t_index]))
+
+            # plt.show()
    
             path.ego = ego
             path.tar = tar
@@ -246,7 +260,7 @@ class CoR_left_turns(data_set_template):
             return True
     
     def includes_images(self = None):
-        return True
+        return False
 
 test = CoR_left_turns()
 

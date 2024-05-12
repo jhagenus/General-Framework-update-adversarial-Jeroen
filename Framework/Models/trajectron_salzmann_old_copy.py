@@ -48,8 +48,8 @@ class trajectron_salzmann_old_copy(model_template):
         self.predict_single_agent = True
         self.can_use_map = True
         # If self.can_use_map = True, the following is also required
-        self.target_width = 175
-        self.target_height = 100
+        self.target_width = 175 #175
+        self.target_height = 100 #100
         self.grayscale = False
         
         self.use_map = self.can_use_map and self.has_map

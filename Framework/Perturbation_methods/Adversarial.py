@@ -13,6 +13,8 @@ from Adversarial_classes.plot import Plot
 from Adversarial_classes.smoothing import Smoothing
 from Adversarial_classes.spline import Spline
 
+from PIL import Image
+
 class Adversarial(perturbation_template):
     def check_and_extract_kwargs(self, kwargs):
         '''
@@ -152,35 +154,45 @@ class Adversarial(perturbation_template):
         loss_store = []
 
         # Plot the adversarial scene
-        static_adv_scene = True
+        static_adv_scene = False
         animated_adv_scene = False
 
+        # Setting animated scene
+        control_action_bar = False
+        control_action_graph = True
+
+        # check if only one control action type is selected
+        Helper.assert_only_one_true_barrier(
+                control_action_bar,
+                control_action_graph
+            )
+        
         # Car size
         car_length = 4.1
         car_width = 1.7
+        wheelbase = 2.7
 
         # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
         flip_dimensions = True
 
         # Initialize parameters
+        num_samples = 20 # Defined as (K) in paper
         iter_num = 1
-        epsilon_acc = 7
-        epsilon_curv = 0.25
+        epsilon_acc = 6
+        epsilon_curv = 0.2
 
         # Learning decay
         learning_rate_decay = True
         gamma = 1
-
-        # Learning rate (epsilon/iter_num)
-        alpha_acc = 0.2
-        alpha_curv = 0.01
+        alpha = 0.01
 
         # Randomized smoothing 
-        smooth_perturbed_data = False
-        smooth_unperturbed_data = False
-        num_samples = 10
+        smooth_perturbed_data = True
+        smooth_unperturbed_data = True
+        num_samples_smoothing = 5 # Defined as (R) in paper
+        num_samples_used_smoothing = 15 # Defined as (M) in paper -> need to be lower than (num_samples * num_samples_smoothing)
         sigmas = [0.05,0.1]
-        plot_smoothing = False
+        plot_smoothing = True
         smoothing_method = 'control_action'   # 'position' or 'control_action'
 
         # remove nan from input and remember old shape
@@ -191,14 +203,25 @@ class Adversarial(perturbation_template):
         #ADE loss
         ADE_loss = False
         ADE_loss_adv_future_GT = False
-        ADE_loss_adv_future_pred = False
+        ADE_loss_adv_future_pred = True
 
         # Collision loss
         collision_loss = False
         fake_collision_loss_GT = False
         fake_collision_loss_Pred = False
         hide_collision_loss_GT = False
-        hide_collision_loss_Pred = True
+        hide_collision_loss_Pred = False
+
+        Name_attack = Helper.retrieve_name_attack(
+            ADE_loss,
+            ADE_loss_adv_future_GT,
+            ADE_loss_adv_future_pred,
+            collision_loss,
+            fake_collision_loss_GT,
+            fake_collision_loss_Pred,
+            hide_collision_loss_GT,
+            hide_collision_loss_Pred
+        )
 
         # check if only one loss function is activated
         Helper.assert_only_one_true(
@@ -232,16 +255,21 @@ class Adversarial(perturbation_template):
         # Barrier function parameters
         distance_threshold = 1
         log_value = 1.2
-
-        # Load images 
-        img, img_m_per_px = self.load_images(X,Domain)
-
+         
         # Check edge case scenarios where agent is standing still
         mask_values_X, mask_values_Y = Helper.masked_data(X, Y)
         
         # Create data and plot data if required
         X, Y, agent_order, spline_data = self.create_data_plot(X, Y, agent, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline, plot_input,plot_spline)
+        
+        # Load images 
+        # img, img_m_per_px = self.load_images(X,Domain)
+        img, img_m_per_px = None, None
 
+        # Show image
+        # plot_img = Image.fromarray(img[0,0,:],'RGB')
+        # plot_img.show()
+        
         # Make copy of the original data for plots
         X_copy = X.copy()
         Y_copy = Y.copy()
@@ -260,8 +288,16 @@ class Adversarial(perturbation_template):
         # Storage for adversarial position
         X_new_adv = torch.zeros_like(X)
         Y_new_adv = torch.zeros_like(Y)
-        Pred_iter_1 = torch.zeros((1, 20, Y.shape[2], 2))
+        Pred_iter_1 = torch.zeros((Y.shape[0], num_samples, Y.shape[2], 2))
 
+        # Clamp the control actions relative to ground truth (Not finished yet)
+        tensor_addition = torch.zeros_like(control_action)
+        tensor_addition[:,0] = epsilon_acc
+        tensor_addition[:,1] = epsilon_curv
+
+        control_actions_clamp_low = control_action - tensor_addition
+        control_actions_clamp_high = control_action + tensor_addition
+        
         # Start the optimization of the adversarial attack
         for i in range(iter_num):
             # Reset gradients
@@ -281,7 +317,7 @@ class Adversarial(perturbation_template):
             num_steps = Y.shape[2]
                 
             # Forward pass through the model
-            Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain,img, img_m_per_px,num_steps)
+            Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain,img, img_m_per_px,num_steps,num_samples)
 
             # Store the first prediction
             if i == 0:
@@ -321,13 +357,12 @@ class Adversarial(perturbation_template):
 
             # Include learning rate decay
             if learning_rate_decay:
-                alpha_acc = alpha_acc * (gamma**i)
-                alpha_curv = alpha_curv * (gamma**i)
+                alpha = alpha * (gamma**i)
 
             # Update Control inputs
             with torch.no_grad():
-                control_action[:,0,:,0].subtract_(grad[:,0,:,0], alpha=alpha_acc)
-                control_action[:,0,:,1].subtract_(grad[:,0,:,1], alpha=alpha_curv)
+                control_action[:,0,:,0].subtract_(grad[:,0,:,0], alpha=alpha)
+                control_action[:,0,:,1].subtract_(grad[:,0,:,1], alpha=alpha)
                 control_action[:,0,:,0].clamp_(-epsilon_acc, epsilon_acc)
                 control_action[:,0,:,1].clamp_(-epsilon_curv, epsilon_curv)
                 control_action[:,1:] = 0.0
@@ -342,14 +377,18 @@ class Adversarial(perturbation_template):
                 sigmas,
                 T,
                 Domain, 
-                num_steps,
+                num_steps, 
+                num_samples_smoothing,
                 self.pert_model,
                 mask_values_X,
                 flip_dimensions,
                 dt,
                 epsilon_acc,
                 epsilon_curv,
-                smoothing_method
+                smoothing_method,
+                img,
+                img_m_per_px,
+                num_samples_used_smoothing
                 )
 
         # Detach the tensor and convert to numpy
@@ -382,7 +421,11 @@ class Adversarial(perturbation_template):
                 dt,
                 flip_dimensions,
                 epsilon_acc,
-                epsilon_curv
+                epsilon_curv,
+                control_action_bar,
+                control_action_graph,
+                wheelbase,
+                Name_attack
             )
 
         # Return Y to old shape
@@ -397,10 +440,7 @@ class Adversarial(perturbation_template):
 
     def load_images(self,X,Domain):
         Img_needed = np.zeros(X.shape[:2], bool)
-        Img_needed[:,1] = True
-        # if self.data.includes_images():
-
-        image = True
+        Img_needed[:,0] = True
         
         if self.data.includes_images():
             if self.pert_model.grayscale:
@@ -415,14 +455,14 @@ class Adversarial(perturbation_template):
             rot = np.angle(x_rel[:,0] + 1j * x_rel[:,1]) 
             domain_needed = Domain.iloc[np.where(Img_needed)[0]]
             
-
             img[Img_needed] = self.data.return_batch_images(domain_needed, centre, rot,
                                                             target_height = self.pert_model.target_height, 
                                                             target_width = self.pert_model.target_width,
                                                             grayscale = self.pert_model.grayscale,
                                                             Imgs_rot = img[Img_needed],
                                                             Imgs_index = np.arange(Img_needed.sum()))
-            img_m_per_px[Img_needed] = self.data.Images.Target_MeterPerPx.loc[Domain.image_id.iloc[Img_needed]]
+            
+            img_m_per_px[Img_needed] = self.data.Images.Target_MeterPerPx.loc[domain_needed.image_id]
         else:
             img = None
             img_m_per_px = None
@@ -453,7 +493,7 @@ class Adversarial(perturbation_template):
 
         '''
 
-        self.batch_size = 1
+        self.batch_size = 2
 
         # TODO: Implement this function, you can decide here if you somehow rely on self.pert_model, if possible, or instead use a fixed value
 
