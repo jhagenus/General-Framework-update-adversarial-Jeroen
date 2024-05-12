@@ -48,10 +48,11 @@ distance_threshold = 1
 ```
 **Note:** Only one can be set to True. When both are set to False, no barrier function is utilized.
 ### Barrier - Ground truth
-$$
+```math
 r_{\text{barrier}} = -\frac{1}{H} \sum_{t=1}^{H} \log \left( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{t} -  X_{\text{tar}}^{t} \right\|_2 \right)
-$$ <br />
-To utilize the regularization term for the observed states ($X{tar}$), two settings are available:
+```
+
+To utilize the regularization term for the observed states ($X_{tar}$), two settings are available:
 
 - To utilize this barrier function, set:
 ```
@@ -62,8 +63,11 @@ log_barrier = True
 log_value = np.e
 ```
 ### Barrier - Spline
-$r_{\text{barrier spline}} = -\frac{1}{H} \sum_{t=1 \dots H} \log ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{t} -  S_{\text{tar}} \right\|_2)$ <br />
-To utilize the regularization term for the observed states ($X{tar}$), three settings are available:
+```math
+r_{\text{barrier spline}} = -\frac{1}{H} \sum_{t=1 \dots H} \log ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{t} -  S_{\text{tar}} \right\|_2)$
+```
+
+To utilize the regularization term for the observed states ($X_{tar}$), three settings are available:
 
 - To utilize this barrier function, set:
 ```
@@ -82,54 +86,83 @@ spline_interval = 100
 The loss functions are used to create adversarial trajectory to a certain direction. **Note** Only one of the loss functions can be set on True.
 
 ### Loss - Average Displacement Error
-$l_{\text{ADE}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - {Y}_{\text{tar}}^{t} \right\|_2$ <br />
+```math
+l_{\text{ADE}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - {Y}_{\text{tar}}^{t} \right\|_2
+```
+
 To utilize the ADE loss function, set:
 ```
 ADE_loss = True
 ```
 ### Loss - Average Displacement Error (new) - Ground truth
-$$l_{\text{ADE\;(new)}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - \tilde{Y}_{\text{tar}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2$$ <br />
-To utilize the ADE loss function using a perturbed future ($\tilde{Y}{tar}$) closely resembling the ground truth future ($\hat{Y}_{tar}$), set:
+```math
+l_{\text{ADE\;(new)}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - \tilde{Y}_{\text{tar}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2
+```
+
+To utilize the ADE loss function using a perturbed future ($\tilde{Y}_{tar}$) closely resembling the ground truth future ($\hat{Y}_{tar}$), set:
 ```
 ADE_loss_adv_future_GT = True
 ```
 ### Loss - Average Displacement Error (new) - Prediction
-$l_{\text{ADE\;(new)}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - \tilde{Y}_{\text{tar}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  \hat{Y}_{\text{tar}}^{t} \right\|_2$ <br />
+```math
+l_{\text{ADE\;(new)}} = -\frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - \tilde{Y}_{\text{tar}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  \hat{Y}_{\text{tar}}^{t} \right\|_2
+```
+
 To utilize the ADE loss function using a perturbed future ($\tilde{Y}_{tar}$) closely resembling the ground truth future (${Y}_{tar}$), set:
 ```
 ADE_loss_adv_future_pred = True
 ```
 
 ### Loss - Collision
-$l_{\text{Collision}} =  \min_{t} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2$ <br />
+```math
+l_{\text{Collision}} =  \min_{t} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2$
+```
+
 To utlize the collision loss function, set:
 ```
 collision_loss = True
 ```
 
 ### Loss - Fake collision - Ground truth
-$l_{\text{Fake\;collision}} =  \min_{t} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2$ <br />
+```math
+l_{\text{Fake\;collision}} =  \min_{t} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2
+```
+
 To utilize the fake collision function using a perturbed future ($\tilde{Y}_{tar}$) closely resembling the ground truth future ($Y_{tar}$), set:
 ```
 fake_collision_loss_GT = True
 ```
 
 ### Loss - Fake collision - Prediction
-$l_{\text{Fake\;collision}} =  \min_{t} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  \hat{Y}_{\text{tar}}^{t} \right\|_2$ <br />
+
+```math
+l_{\text{Fake\;collision}} =  \min_{t} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \tilde{Y}_{\text{tar}}^{t} -  \hat{Y}_{\text{tar}}^{t} \right\|_2
+
+```
+
+
 To utilize the fake collision function using a perturbed future ($\tilde{Y}_{tar}$) closely resembling the predicted future ($\hat{Y}_{tar}$), set:
+
 ```
 fake_collision_loss_pred = True
 ```
 
 ### Loss - Hide collision - Ground truth
-$l_{\text{Hide\;Collision}} =  \min_{t} \left\| \tilde{Y}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2$ <br />
+
+```math
+l_{\text{Hide\;Collision}} =  \min_{t} \left\| \tilde{Y}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2
+```
+
 To utilize the fake collision function using a predicted perturbed future ($\hat{\tilde{Y}}_{tar}$) closely resembling the ground truth future ($Y_{tar}$), set:
 ```
 hide_collision_loss_GT = True
 ```
 
 ### Loss - Hide collision - Prediction
-$l_{\text{Hide\;Collision}} =  \min_{t} \left\| \tilde{Y}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} -  \hat{Y}_{\text{tar}}^{t} \right\|_2$ <br />
+```math
+l_{\text{Hide\;Collision}} =  \min_{t} \left\| \tilde{Y}_{\text{tar}}^{t} - Y_{\text{ego}}^{t} \right\|_2 + \frac{1}{T} \sum_{t=1 \dots T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} -  \hat{Y}_{\text{tar}}^{t} \right\|_2
+```
+
 To utilize the fake collision function using a predicted perturbed future ($\hat{\tilde{Y}}_{tar}$) closely resembling the predicted future ($\hat{Y}_{tar}$), set:
 ```
 hide_collision_loss_pred = True
