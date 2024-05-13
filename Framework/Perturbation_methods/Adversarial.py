@@ -180,6 +180,8 @@ class Adversarial(perturbation_template):
         iter_num = 1
         epsilon_acc = 6
         epsilon_curv = 0.2
+        # JULIAN: It likely makes sense to have two different epsilon values for the absolute clamping and the 
+        # clamping relative to the original trahectory
 
         # Learning decay
         learning_rate_decay = True
@@ -194,6 +196,8 @@ class Adversarial(perturbation_template):
         sigmas = [0.05,0.1]
         plot_smoothing = True
         smoothing_method = 'control_action'   # 'position' or 'control_action'
+
+        # JULIAN: Move all of the above here into the __init__ function, or a separate function that is called in the __init__ function
 
         # remove nan from input and remember old shape
         Y_shape = Y.shape
@@ -255,6 +259,10 @@ class Adversarial(perturbation_template):
         # Barrier function parameters
         distance_threshold = 1
         log_value = 1.2
+
+
+        # JULIAN: Move all of the above here into the __init__ function, or a separate function that is called in the __init__ function
+        # Except for the two lines where you remove nan values from Y and store the shape of Y
          
         # Check edge case scenarios where agent is standing still
         mask_values_X, mask_values_Y = Helper.masked_data(X, Y)
@@ -295,8 +303,12 @@ class Adversarial(perturbation_template):
         tensor_addition[:,0] = epsilon_acc
         tensor_addition[:,1] = epsilon_curv
 
+        # JULIAN: Those function need to be done for the relative clamping
         control_actions_clamp_low = control_action - tensor_addition
         control_actions_clamp_high = control_action + tensor_addition
+
+        # JULIAN: It is likely easiest to aplly a torch minium with -epsilon_absolut to control_actions_clamp_low
+        # and a torch maximum with epsilon_absolut to control_actions_clamp_high, before then clamping the control actions
         
         # Start the optimization of the adversarial attack
         for i in range(iter_num):
@@ -346,6 +358,8 @@ class Adversarial(perturbation_template):
                         log_value,
                         spline_data
                         )
+            # JULIAN: Generally, when calling functions, it might be better if fully write out X = X, Y = Y, etc., so 
+            # that it is easier to comprehend potential differences when looking inside the function
 
             # Store the loss for plot
             loss_store.append(losses.detach().cpu().numpy())
@@ -358,14 +372,20 @@ class Adversarial(perturbation_template):
             # Include learning rate decay
             if learning_rate_decay:
                 alpha = alpha * (gamma**i)
+            # JULIAN: This learning rate implementation is wrong, as you overwrite alpha. Either use
+            # alpha *= gamma, or define an intial value alpha_0 and then use alpha = alpha_0 * gamma**i
 
             # Update Control inputs
             with torch.no_grad():
                 control_action[:,0,:,0].subtract_(grad[:,0,:,0], alpha=alpha)
                 control_action[:,0,:,1].subtract_(grad[:,0,:,1], alpha=alpha)
+                # JULIAN: Clamp here with the bounded values of control_actions_clamp_low and control_actions_clamp_high
                 control_action[:,0,:,0].clamp_(-epsilon_acc, epsilon_acc)
                 control_action[:,0,:,1].clamp_(-epsilon_curv, epsilon_curv)
                 control_action[:,1:] = 0.0
+
+        # JULIAN: While this is okay right now, in the end, it would be preferable if this smoothing part is instead moved into the model module
+        # instead of the perturbation module
 
         # Gaussian smoothing module
         X_pert_smoothed, Pred_pert_smoothed, X_unpert_smoothed, Pred_unpert_smoothed = Smoothing.randomized_smoothing(
@@ -469,6 +489,8 @@ class Adversarial(perturbation_template):
 
         return img, img_m_per_px
     
+    # JULIAN: This function name is a little bit misleading, especially long term if ther is no plotting involved
+    # Ideally, I would call flip_dimensions in the main function, and not do it inside this function
     def create_data_plot(self, X, Y, agent, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline, plot_input, plot_spline):
         # Flip the dimensions of the data if required
         X, Y, agent_order = Helper.flip_dimensions(X, Y, agent, flip_dimensions)
@@ -494,10 +516,6 @@ class Adversarial(perturbation_template):
         '''
 
         self.batch_size = 2
-
-        # TODO: Implement this function, you can decide here if you somehow rely on self.pert_model, if possible, or instead use a fixed value
-
-        # raise AttributeError('This function has to be implemented in the actual perturbation method.')
 
     
     def requirerments(self):

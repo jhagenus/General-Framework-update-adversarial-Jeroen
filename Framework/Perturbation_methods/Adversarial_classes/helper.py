@@ -4,7 +4,12 @@ import torch
 class Helper:
     @staticmethod
     def check_conversion_control_action(adv_position, X, Y, future_action):
+        # JULIAN: Instead of using the variable names from the adversarial.py function, try to use names that are more descriptive
+        # for the function itself. For example, use pos_inverse instead of adv_positions
+
         # Check if the control action is converted correctly
+        # JULIAN: Checking for equality using decimal rounding is dangerous (i.e., 0.00499999999 and 0.00500000001 will not be equal)
+        # JULIAN: Instead, you can use torch.allclose(adv_position, torch.cat((X,Y),dim=1), atol=1e-3)
         if future_action:
             equal_tensors = torch.round(adv_position[:, 0, :, :], decimals=2) == torch.round(torch.cat((X[:, 0, :],Y[:, 0, :]),dim=1), decimals=2)
         else:
@@ -55,7 +60,8 @@ class Helper:
 
     @staticmethod
     def masked_data(X, Y):
-        # Check the edge case scenario where the vehicle is standing still, by checking if the first and last position are within 2 meters
+        # JULIAN: Top be more consistent, try to call this function after the flipping, so we can use 0 as the agent index instead here
+        # Check the edge case scenario where the vehicle is standing still, by checking if the first and last position are within 0.2 meters
         mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.2
         mask_values_Y = np.abs(Y[:,1,0,1]-Y[:,1,-1,1]) < 0.2
 
@@ -91,6 +97,8 @@ class Helper:
         min_value_y = np.inf
         max_value_y = -np.inf
 
+        # JULIAN: Why not use np.min and np.max directly on the concatenated array of X and Y?
+
         # Find plot limits
         for j in range(X.shape[1]):
             min_value_x = min(min_value_x, np.min(X[index,j,:,0]))
@@ -124,6 +132,7 @@ class Helper:
     @staticmethod
     def to_cuda_tensor(np_array):
         # Helper function to convert numpy arrays to CUDA tensors
+        # JULIAN: Try to pass self.pert_model.device as an argument in this function, that is safer than hardcoding 'cuda'
         return torch.from_numpy(np_array).to(dtype=torch.float32, device='cuda')
     
     @staticmethod
@@ -142,6 +151,7 @@ class Helper:
     
     @staticmethod
     def is_monotonic(data):
+        # JULIAN: I am pretty sure something like this already exists in numpy, but I am not sure about the exact name
         # Check for monotonic increasing
         is_increasing = np.all(data[:-1,0] <= data[1:,0])
         # Check for monotonic decreasing
@@ -151,6 +161,7 @@ class Helper:
     
     @staticmethod
     def return_data(adv_position, X, Y, future_action):
+        # JULIAN: Why do we return both X_new and X_new_adv? They them to be the same in any case
         if future_action:
             X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=2)
             X_new_adv = X_new
