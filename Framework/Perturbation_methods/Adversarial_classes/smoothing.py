@@ -62,6 +62,9 @@ class Smoothing:
         outputs_per_sigma_unpert = np.array(outputs_per_sigma_unpert)
 
         # Return randomly selected data
+
+        # JULIAN: If you want to improve efficiency, simply sample 1 prediction per input, semantically, this should still be similar
+        # to sampling from both distributions, but is much faster.
         perturbated_X_per_sigma_pert_selection, outputs_per_sigma_pert_selection = Smoothing.randomly_select_samples_smoothing(perturbated_X_per_sigma_pert,outputs_per_sigma_pert, num_samples_used_smoothing, num_samples)
         perturbated_X_per_sigma_unpert_selection, outputs_per_sigma_unpert_selection = Smoothing.randomly_select_samples_smoothing(perturbated_X_per_sigma_unpert,outputs_per_sigma_unpert, num_samples_used_smoothing, num_samples)
 
@@ -128,11 +131,14 @@ class Smoothing:
         selected_samples_future = new_array_future[:, :, random_samples]
 
         # Select the correct input samples
+        # JULIAN: Use np.unravel_index(random_samples, (shape_future[1], shape_future[3]))[0] instead
+        # JULIAN: This also makes the input num_samples unnecessary
         random_samples_past = np.ceil(random_samples/num_samples) - 1 
         random_samples_past = random_samples_past.astype(int)
 
         selected_samples_past = []
-
+        
+        # JULIAN:Why this for loop? Why not just use array_past[:,random_samples_past,:,:,:,:]?
         for i in range(len(random_samples_past)):
             selected_samples_past.append(array_past[:,random_samples_past[i],:,:,:,:])
             
