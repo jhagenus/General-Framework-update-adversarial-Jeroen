@@ -10,10 +10,15 @@ class Spline:
             return None
         
         # Combine historical and future data
+        # JULIAN: Using axis = -2 is safer, as there might be additional axes previously (e.g., for 20 predictions)
         Spline_input_values = np.concatenate((X,Y),axis=2)
         
-        # Check edge case scenarios where agent is standing still
+        # Check edge case scenarios where agent is standing 
+        # JULIAN: This whole thing right now is very dangerous, as it is only valid in this certain scenario
+        # JULIAN: try to rewrite it to be also applicable for different scenarios
+        # JULIAN: Additionally, I am not sure if monotony is actually necessary here
         if flip_dimensions:
+            # JULIAN: This could easily be vectorized
             for batch_idx in range(X.shape[0]):
                 # Check if the target agent is standing still in historical data
                 if mask_values_X[batch_idx] == True:
@@ -69,6 +74,12 @@ class Spline:
     @staticmethod
     def interpolate_points(data,num_interpolations,agent,mask_values_X = False,mask_values_Y = False):
         # Flip agent to make x values monotonic
+
+        # JULIAN: I think that this whole aspect is far to complicated. Especially with the generation of the interpolated points
+        # JULIAN: One can analittically calculate the shortest distance of a point to a line between two other points.
+        # JULIAN: Simply do this for all the line segemnts in the trajectory, and then choose the minimum distance
+        # JULIAN: Doing this will likely be much faster because of more efficient vectorization as well.
+        # JULIAN: See first answer at https://math.stackexchange.com/questions/330269/the-distance-from-a-point-to-a-line-segment
         monotonic = Helper.is_monotonic(data)
         if agent == 'target':
             if mask_values_X or mask_values_Y:
