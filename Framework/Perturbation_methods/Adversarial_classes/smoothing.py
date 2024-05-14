@@ -5,6 +5,13 @@ import matplotlib.pyplot as plt
 from Adversarial_classes.control_action import Control_action
 
 class Smoothing:
+    # FREDERIK: This might seem a little pedantic, but you really need to improve the consistency in your code.
+    # https://peps.python.org/pep-0008/ <- The one you do all the time is lack of space after commas in function arguments.
+    # It might seem inconsequential, but it makes the code harder to read, and if you are working in a team, it is important to have a consistent style.
+    # A code review in a professional setting would have caught this, and they wouldn't even have looked at the actual code before you fixed this.
+    # Another thing is that your lines tend to be very long and not fit onto a standard screen. This is also a readability issue. Break the lines
+    # at meaningful places, like after commas or operators. This is also a common code review comment.
+
     @staticmethod
     def randomized_smoothing(X, X_new_adv, smooth_perturbed_data, smooth_unperturbed_data, num_samples, sigmas,T,Domain, num_steps,num_samples_smoothing,pert_model,mask_values_X,flip_dimensions,dt,epsilon_acc,epsilon_curv,smoothing_method,img,img_m_per_px,num_samples_used_smoothing):
         if not smooth_perturbed_data and not smooth_unperturbed_data:
@@ -19,8 +26,14 @@ class Smoothing:
         perturbated_X_per_sigma_unpert = [[] for _ in sigmas]
 
         # Apply randomized adversarial smoothing
+        # FREDERIK: Be careful with applying the same amount of smoothing for both acceleration and curvature.
+        # Semantically, it is not very meaningful. IMO, it is better to design the smoothing to specify different
+        # sigmas for acceleration and curvature, and then, if needed, apply the same sigma for both.
         for i, sigma in enumerate(sigmas):
             for _ in range(num_samples_smoothing):
+                # FREDERIK: One if-else for perturbed data and one for unperturbed data.
+                # It will be way more readable.
+
                 # Smooth perturbed data
                 if smooth_perturbed_data and not smooth_unperturbed_data:
                     # Add gaussian noise to the perturbed data

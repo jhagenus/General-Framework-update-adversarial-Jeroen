@@ -136,9 +136,17 @@ class Adversarial(perturbation_template):
 
 
         '''
+        # FREDERIK: I would suggest to move the following code into a separate function, as it is quite long and complex.
+        # (General rule of thumb is anything more than 50 lines needs to be split up into smaller functions. The true software
+        # engineering pros say 10 lines. This is 300+ lines.)
+        # Generally, try to somewhat abide by the Single Responsibility Principle, which means that a function should only
+        # do one thing. E.g. move the perturbation loop into a separate function.
+        # https://en.wikipedia.org/wiki/Single-responsibility_principle
 
         # Debug mode
         torch.autograd.set_detect_anomaly(True)
+        # FREDERIK: Be careful with this, as it can slow down the code significantly
+        # https://pytorch.org/docs/stable/autograd.html#debugging-and-anomaly-detection
 
         # settings
         # Plot input data and spline (if plot is True -> plot_spline can be set on True) 
@@ -171,6 +179,8 @@ class Adversarial(perturbation_template):
         car_length = 4.1
         car_width = 1.7
         wheelbase = 2.7
+        # FREDERIK: These ought to be parameters passed to the function, not hardcoded here.
+        # Check with Julian though. (same goes with everything above and much of that below.)
 
         # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
         flip_dimensions = True
@@ -182,6 +192,7 @@ class Adversarial(perturbation_template):
         epsilon_curv = 0.2
         # JULIAN: It likely makes sense to have two different epsilon values for the absolute clamping and the 
         # clamping relative to the original trahectory
+        # FREDERIK: Our paper or what other paper? What is iter_num? Max or current number of iterations?
 
         # Learning decay
         learning_rate_decay = True
@@ -193,7 +204,9 @@ class Adversarial(perturbation_template):
         smooth_unperturbed_data = True
         num_samples_smoothing = 5 # Defined as (R) in paper
         num_samples_used_smoothing = 15 # Defined as (M) in paper -> need to be lower than (num_samples * num_samples_smoothing)
-        sigmas = [0.05,0.1]
+        # FREDERIK: Use asserts to check that num_samples_used_smoothing is lower than num_samples * num_samples_smoothing.
+        # FREDERIK: I thought M had to be equal to K to fit within Julian's framework. Check with Julian.
+        sigmas = [0.05, 0.1]
         plot_smoothing = True
         smoothing_method = 'control_action'   # 'position' or 'control_action'
 
@@ -239,6 +252,11 @@ class Adversarial(perturbation_template):
                 hide_collision_loss_Pred
             )
 
+        # FREDERIK: From a software engineering perspective, this is code smell. A better option would be
+        # a strategy design pattern, where you have a loss class that has a method calculate_loss, and then
+        # you have a class for each loss function that inherits from the loss class and implements the calculate_loss method.
+        # However, this might be too much for you to learn about right now, so it is fine for now.
+
         # Barrier function (set 1 on true if barrier is activated and the rest on false, or all on false if no barrier is activated)
         log_barrier = False
         ADVDO_barrier = False
@@ -250,6 +268,7 @@ class Adversarial(perturbation_template):
                 ADVDO_barrier,
                 spline_barrier
             )
+        # FREDERIK: Why can only one barrier function be activated? This seems like a limitation that is not necessary.
         
         # validation settings
         Helper.validate_plot_settings(plot_input, plot_spline)
@@ -293,6 +312,28 @@ class Adversarial(perturbation_template):
         control_action, heading_init, velocity_init = Control_action.Reversed_Dynamical_Model(X, mask_values_X, flip_dimensions, new_input,dt)
         control_action.requires_grad = True 
 
+        # FREDERIK: This should follow a standard adversarial structure:
+        # control_action = ...
+        # perturbation = torch.zeros_like(control_action)
+        # perturbation.requires_grad = True
+        # 
+        # for i in range(iter_num):
+        #    perturbation.grad = None
+        #
+        #    adv_position = Control_action.dynamical_model(new_input, control_action + perturbation, velocity_init, heading_init, dt)
+        #    loss = Loss.calculate_loss(...)
+        #    loss.backward()
+        #
+        #    perturbation -= alpha * perturbation.grad
+        #    perturbation = torch.clamp(perturbation, -epsilon, epsilon)  # clamp based on relative control action
+        #    perturbation = ... # clamp based on absolute control action
+        #    perturbation[:, 1:] = 0.0  # Remove perturbation from other agents
+        #
+        #    alpha *= gamma
+
+        # By having a separate perturbation tensor, you can easily clamp the perturbation relative to the nominal control action.
+        # Furthermore, you can easily remove the perturbation from the other agents by setting the perturbation to zero for those agents.
+
         # Storage for adversarial position
         X_new_adv = torch.zeros_like(X)
         Y_new_adv = torch.zeros_like(Y)
@@ -318,7 +359,7 @@ class Adversarial(perturbation_template):
             # Calculate updated adversarial position
             adv_position = Control_action.dynamical_model(new_input, control_action, velocity_init, heading_init,dt)
 
-            # check if cotrol action are converted correctly
+            # check if control action are converted correctly
             if i == 0:
                 Helper.check_conversion_control_action(adv_position, X, Y, future_action)
 
@@ -330,6 +371,8 @@ class Adversarial(perturbation_template):
                 
             # Forward pass through the model
             Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain,img, img_m_per_px,num_steps,num_samples)
+            # FREDERIK: Get yourself a PEP8 linter. It will help you ensure that your code is consistent and readable.
+            # E.g. the lack of space between the comma and the next argument in the function call above.
 
             # Store the first prediction
             if i == 0:
@@ -374,6 +417,7 @@ class Adversarial(perturbation_template):
                 alpha = alpha * (gamma**i)
             # JULIAN: This learning rate implementation is wrong, as you overwrite alpha. Either use
             # alpha *= gamma, or define an intial value alpha_0 and then use alpha = alpha_0 * gamma**i
+            # FREDERIK: Update alpha _after_ you have used it in the optimization step, not before.
 
             # Update Control inputs
             with torch.no_grad():
@@ -383,6 +427,9 @@ class Adversarial(perturbation_template):
                 control_action[:,0,:,0].clamp_(-epsilon_acc, epsilon_acc)
                 control_action[:,0,:,1].clamp_(-epsilon_curv, epsilon_curv)
                 control_action[:,1:] = 0.0
+                # FREDERIK: What does the indexing control_action[:,1:] = 0.0 do? If it is to remove perturbation for the ego vehicle,
+                # the this is wrong. With this, you force the other agent to stand still, which is not what you want.
+                # You should instead only perturb the first agent, and leave the other agents as they are.
 
         # JULIAN: While this is okay right now, in the end, it would be preferable if this smoothing part is instead moved into the model module
         # instead of the perturbation module

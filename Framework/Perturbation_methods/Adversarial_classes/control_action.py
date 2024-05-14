@@ -57,10 +57,13 @@ class Control_action:
 
                     # Calculate the change of heading for the next time step
                     d_yaw_rate = (angle[i+1] - angle[i]) / dt
+                    # FREDERIK: This is just yaw_rate (rate of change in angle), not d_yaw_rate (rate of change in yaw rate), right?
 
                     # Calculate the curvature 
                     curvature = d_yaw_rate / velocity[i]
                     control_action[batch_idx,0,i,1] = curvature 
+
+                    # FREDERIK: Is it possible to let d_yaw_rate/yaw_rate be the control action instead of curvature?
 
         # JULIAN: Using torch.nan_to_num to replace inf values is likely better, as you can distinguish between inf and -inf values
         control_action[torch.isinf(control_action)] = 1e-6
@@ -68,6 +71,7 @@ class Control_action:
         # you initialize control action to be 1 step shorter along the time dimension.
         # JULIAN: Additionally, as we only perturb the first agent (i.e., [:,0]), it might be easier to simply remove the agent dimension 
         # from control action
+        # FREDERIK: Why does some control actions become inf?
 
         return control_action, heading_init, velocity_init
     
@@ -84,6 +88,10 @@ class Control_action:
     @staticmethod
     def compute_velocity(X, batch_idx, dt, index):
         # JULIAN: See the comment in compute_heading
+        # FREDERIK: [:] along the last dimension? Is that only x and y or does the state include more things?
+        # If yes, then the velocity is incorrectly calculated.
+        # FREDERIK: What is `index`?
+        # FREDERIK: Please add a comment to explain the order of indexing in the X tensor.
         return torch.linalg.norm(X[batch_idx,0,index + 1,:] - X[batch_idx,0,index,:] , dim=-1, ord = 2) / dt
     
     @staticmethod

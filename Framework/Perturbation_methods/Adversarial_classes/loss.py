@@ -3,6 +3,10 @@ import torch
 class Loss:
     @staticmethod
     def calculate_loss(X,X_new,Y,Y_new,Pred_t,Pred_iter_1,ADE_loss,ADE_loss_adv_future_GT,ADE_loss_adv_future_pred,collision_loss,fake_collision_loss_GT,fake_collision_loss_Pred,hide_collision_loss_GT,hide_collision_loss_Pred,log_barrier,ADVDO_barrier,spline_barrier,distance_threshold,log_value,spline_data):
+        # FREDERIK: This functions is unreadable. If-else chains are bad practice (error proune, hard to read, hard to maintain).
+        # First, you should move the subtraction of `barrier_output` out of the if-else chain, as it is common to all cases.
+        # It will massively improve readability. Second, you should consider moving the barrier_output calculation to a separate function.
+        # Finally, this is a great candidate for a strategy pattern.
 
         # Add  regularization loss to adversarial input using barrier function
         if log_barrier:
