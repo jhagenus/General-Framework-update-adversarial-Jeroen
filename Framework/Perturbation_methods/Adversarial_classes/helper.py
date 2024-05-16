@@ -3,72 +3,190 @@ import torch
 
 class Helper:
     @staticmethod
-    def check_conversion_control_action(adv_position, X, Y, future_action):
-        # JULIAN: Instead of using the variable names from the adversarial.py function, try to use names that are more descriptive
-        # for the function itself. For example, use pos_inverse instead of adv_positions
+    def check_conversion(Data_1, Data_2):
+        """
+        Checks if two tensors are approximately equal within a specified tolerance.
 
-        # Check if the control action is converted correctly
-        # JULIAN: Checking for equality using decimal rounding is dangerous (i.e., 0.00499999999 and 0.00500000001 will not be equal)
-        # JULIAN: Instead, you can use torch.allclose(adv_position, torch.cat((X,Y),dim=1), atol=1e-3)
-        if future_action:
-            equal_tensors = torch.round(adv_position[:, 0, :, :], decimals=2) == torch.round(torch.cat((X[:, 0, :],Y[:, 0, :]),dim=1), decimals=2)
+        Args:
+            Data_1 (torch.Tensor): The first tensor to compare.
+            Data_2 (torch.Tensor): The second tensor to compare.
+
+        Raises:
+            ValueError: If the tensors are not approximately equal within the specified tolerance.
+        """
+        equal_tensors = torch.allclose(Data_1, Data_2, atol=1e-3)
+
+        if not equal_tensors:
+            raise ValueError("The conversion is not correct.")
+    
+    @staticmethod
+    def create_data_to_perturb(X, Y, loss_function):
+        """
+        Creates data to perturb based on the specified loss function.
+
+        Args:
+            X (torch.Tensor): A tensor containing the initial data with shape (batch size, number agents, number time steps past, coordinates (x,y)).
+            Y (torch.Tensor): A tensor containing the future data with shape (batch size, number agents, number time steps future, coordinates (x,y)).
+            loss_function (str): A string specifying the loss function to determine how to create the perturbed data.
+
+        Returns:
+            tuple: A tuple containing:
+                   - positions_perturb (torch.Tensor): A tensor containing the data to be perturbed.
+                   - future_action_included (bool): A boolean indicating whether future states are included in the perturbed data.
+        """
+        if loss_function in ['ADE_new_GT', 'ADE_new_pred', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred']:
+            future_action_included = True
+            positions_perturb = torch.cat((X, Y), dim=2)
         else:
-            equal_tensors = torch.round(adv_position[:, 0, :], decimals=2) == torch.round(X[:, 0, :], decimals=2)
+            future_action_included = False
+            positions_perturb = X
 
-        if not torch.all(equal_tensors):
-            raise ValueError("The dynamical transformation is not correct.")
+        return positions_perturb, future_action_included
+
+    @staticmethod
+    def remove_nan_values(data):
+        """
+        Removes NaN values from the data by trimming the array to the maximum length where all values are non-NaN
+        in the path length channel across all samples.
+
+        Args:
+            data (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+
+        Returns:
+            np.ndarray: A trimmed array containing no NaN values in the path length channel.
+        """
+        # Calculate the maximum length where all values are non-NaN in the path lenght channel across all samples
+        max_length = np.min(np.sum(~np.isnan(data[:, :, :, 0]), axis=2)[:, 0])
         
-    def create_new_input(X,Y, ADE_loss_adv_future_GT,ADE_loss_adv_future_pred, fake_collision_loss_GT, fake_collision_loss_Pred, hide_collision_loss_GT, hide_collision_loss_Pred):
-        if ADE_loss_adv_future_GT or ADE_loss_adv_future_pred or fake_collision_loss_GT or fake_collision_loss_Pred or hide_collision_loss_GT  or hide_collision_loss_Pred:
-            future_action = True
-            new_input = torch.cat((X,Y),dim=2)
-        else:
-            future_action = False
-            new_input = X
+        # Trim the array to the maximum length without NaN values in the path lenght channel
+        Y_trimmed = data[:, :, :max_length, :]
+    
+        return Y_trimmed
 
-        return new_input, future_action
-  
+
     @staticmethod
     def return_to_old_shape(Y_new_pert, Y_shape):
+        """
+        Restores the perturbed tensor to its original shape by appending NaN values.
+
+        Args:
+            Y_new_pert (np.ndarray): The perturbed tensor with reduced shape.
+            Y_shape (tuple): The original shape of the tensor.
+
+        Returns:
+            np.ndarray: The tensor restored to its original shape with NaN values appended.
+        """
         nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
         return np.concatenate((Y_new_pert, nan_array), axis=2)
     
     @staticmethod
-    def validate_plot_settings(First, Second):
+    def validate_settings_order(First, Second):
+        """
+        Validates the order of two boolean settings.
+
+        Args:
+            First (bool): The first boolean setting.
+            Second (bool): The second boolean setting.
+
+        Raises:
+            ValueError: If the second element is True while the first element is False.
+        """
         if Second and not First:
             raise ValueError("Second element can only be True if First element is also True.")
     
     @staticmethod
-    def remove_nan_values(Y):
-        # Calculate the maximum length where all values are non-NaN in the path lenght channel across all samples
-        max_length = np.min(np.sum(~np.isnan(Y[:, :, :, 0]), axis=2)[:, 0])
-        
-        # Trim the array to the maximum length without NaN values in the path lenght channel
-        Y_trimmed = Y[:, :, :max_length, :]
-    
-        return Y_trimmed
-    
-    @staticmethod
     def assert_only_one_true(*args):
         # Check that exactly one argument is True
-        assert sum(args) == 1, "Assertion Error: Exactly one loss function must be activated."
+        assert sum(args) == 1, "Assertion Error: Exactly one can be set on True."
 
     @staticmethod
-    def assert_only_one_true_barrier(*args):
+    def assert_only_zero_or_one_true(*args):
         # Check that exactly one argument is True
-        assert sum(args) <= 1, "Assertion Error: Only one barrier loss function can be activated or none."
+        assert sum(args) <= 1, "Assertion Error: Only one value can be set on True or none."
+
+    @staticmethod
+    def assert_value_is_to_large(*args):
+        # Check that the first two values are larger than the third value
+        assert args[0] * args[1] >= args[2], "The third value is to large."
+
+
+    @staticmethod
+    def flip_dimensions_2(flip_dimensions, X_new_pert, Y_new_pert, agent_order):
+        """
+        Reorders the dimensions of the perturbed tensors based on the original agent order if flipping is required.
+
+        Args:
+            flip_dimensions (bool): A boolean indicating whether dimension flipping is required.
+            X_new_pert (np.ndarray): The perturbed X tensor.
+            Y_new_pert (np.ndarray): The perturbed Y tensor.
+            agent_order (np.ndarray): The original order of agents.
+
+        Returns:
+            tuple: A tuple containing:
+                - X_new_pert (np.ndarray): The reordered X tensor.
+                - Y_new_pert (np.ndarray): The reordered Y tensor.
+        """
+        if flip_dimensions:
+            agent_order_inverse = np.argsort(agent_order)
+            X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
+            Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
+        
+        return X_new_pert, Y_new_pert
 
     @staticmethod
     def masked_data(X, Y):
         # JULIAN: Top be more consistent, try to call this function after the flipping, so we can use 0 as the agent index instead here
         # Check the edge case scenario where the vehicle is standing still, by checking if the first and last position are within 0.2 meters
-        mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.2
-        mask_values_Y = np.abs(Y[:,1,0,1]-Y[:,1,-1,1]) < 0.2
+        # mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.2
+        # mask_values_Y = np.abs(Y[:,1,0,1]-Y[:,1,-1,1]) < 0.2
+
+        mask_values_X = np.abs(X[:,:,0,:]-X[:,:,-1,:]) < 0.2
+        mask_values_Y = np.abs(Y[:,:,0,:]-Y[:,:,-1,:]) < 0.2
 
         return mask_values_X, mask_values_Y
     
+    # @staticmethod
+    # def compute_mask_values(tensor):
+    #     mask = np.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 0.2
+    #     # Broadcast mask to match the shape of the input tensor
+    #     return np.broadcast_to(mask[:, :, np.newaxis, :], tensor.shape)
+    
+    @staticmethod
+    def compute_mask_values_tensor(tensor):
+        # Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
+        mask = torch.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 0.2
+        # Broadcast the mask to match the shape of the input tensor
+        mask = mask[:, :, None, :].expand_as(tensor)
+
+        # Identify columns that are all true or all false in the last dimension
+        all_true = mask.all(dim=-2)
+
+        # Identify where one element is True and the other is False in the last dimension
+        condition = (all_true.sum(dim=-1) == 1)
+
+        mask_clone = mask.clone()
+    
+        mask_clone[condition,:] = False
+        
+        return mask_clone
+    
     @staticmethod
     def flip_dimensions(X, Y, agent, flip_dimensions):
+        """
+        Flips the dimensions of the input arrays based on the specified agent and reorders the agent dimensions.
+
+        Args:
+            X (np.ndarray): A 4-dimensional array of shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+            Y (np.ndarray): A 4-dimensional array of shape (batch size, number agents, number time steps future, coordinate (x,y)).
+            agent (np.ndarray): A 1-dimensional array indicating the type of each agent.
+            flip_dimensions (bool): A boolean indicating whether dimension flipping is required.
+
+        Returns:
+            tuple: A tuple containing:
+                   - X (np.ndarray): The reordered X array.
+                   - Y (np.ndarray): The reordered Y array.
+                   - agent_order (np.ndarray or None): The new order of agents, or None if no flipping is required.
+        """
         # Early exit if no dimension flipping is required
         if flip_dimensions == False:
             return X, Y, None
@@ -115,80 +233,176 @@ class Helper:
 
         return min_value_x, max_value_x, min_value_y, max_value_y
     
-    @staticmethod
-    def convert_to_tensor(X, Y, spline_data):
-        # Convert all inputs to tensors
-        X = Helper.to_cuda_tensor(X)
-        Y = Helper.to_cuda_tensor(Y)
-
-        # Handle the optional spline data
-        if spline_data is not None:
-            spline_data = Helper.to_cuda_tensor(spline_data)
-        else:
-            spline_data = None
+    # @staticmethod
+    # def convert_to_tensor(X, Y, spline_data,device):
+    #     # Convert all inputs to tensors
+    #     X = Helper.to_cuda_tensor(X,device)
+    #     Y = Helper.to_cuda_tensor(Y,device)
+    #     spline_data = Helper.to_cuda_tensor(spline_data,device)
         
-        return X, Y, spline_data
+    #     return X, Y, spline_data
     
     @staticmethod
-    def to_cuda_tensor(np_array):
-        # Helper function to convert numpy arrays to CUDA tensors
-        # JULIAN: Try to pass self.pert_model.device as an argument in this function, that is safer than hardcoding 'cuda'
-        return torch.from_numpy(np_array).to(dtype=torch.float32, device='cuda')
+    def convert_to_tensor(device, *args):
+        """
+        Converts multiple inputs to tensors and moves them to the specified device.
+
+        Args:
+            device (torch.device): The device to move the tensors to (e.g., 'cpu' or 'cuda').
+            *args: Variable length argument list of inputs to be converted to tensors.
+
+        Returns:
+            list: A list of converted tensors on the specified device.
+        """
+        converted_tensors = []
+        for arg in args:
+            converted_tensors.append(Helper.to_cuda_tensor(arg, device))
+        return converted_tensors
+    
+    def convert_to_numpy_array(*args):
+        """
+        Converts multiple inputs to numpy arrays.
+
+        Args:
+            *args: Variable length argument list of inputs to be converted to numpy arrays.
+
+        Returns:
+            list: A list of converted numpy arrays.
+        """
+        numpy_array = [np.array(arg) for arg in args]
+        return numpy_array
+    
+    def set_device(device,*args):
+        """
+        Moves multiple tensors to the specified device.
+
+        Args:
+            device (torch.device): The device to move the tensors to (e.g., 'cpu' or 'cuda').
+            *args: Variable length argument list of tensors to be moved to the specified device.
+
+        Returns:
+            list: A list of tensors moved to the specified device.
+        """
+        tensor = [arg.to(device=device) for arg in args]
+        return tensor
+        
+    @staticmethod
+    def to_cuda_tensor(data,device):
+        """
+        Converts the input data to a tensor and moves it to the specified device.
+
+        Args:
+            data: The input data to be converted.
+            device (torch.device): The device to move the tensor to (e.g., 'cpu' or 'cuda').
+
+        Returns:
+            torch.Tensor: The converted tensor on the specified device.
+        """
+        return torch.from_numpy(data).to(dtype=torch.float32, device=device)
     
     @staticmethod
-    def detach_tensor(X_new_adv, Y_new_adv, Pred_t,Pred_iter_1):
-        # Detach tensors, move them to CPU, and convert them to NumPy arrays
-        X_new_pert = X_new_adv.detach().cpu().numpy()
-        Y_new_pert = Y_new_adv.detach().cpu().numpy()
-        Pred_t = Pred_t.detach().cpu().numpy()
-        Pred_iter_1 = Pred_iter_1.detach().cpu().numpy()
+    def detach_tensor(*args):
+        """
+        Detaches multiple tensors from the computation graph and moves them to the CPU as numpy arrays.
 
-        # Calculate the mean of the predicted future positions
-        Pred_t = np.mean(Pred_t, axis=1)
-        Pred_iter_1 = np.mean(Pred_iter_1, axis=1)
-        
-        return X_new_pert, Y_new_pert, Pred_t, Pred_iter_1
+        Args:
+            *args: Variable length argument list of tensors to be detached and converted to numpy arrays.
+
+        Returns:
+            list: A list of detached tensors converted to numpy arrays.
+        """
+        detached_tensor = [arg.detach().cpu().numpy() for arg in args]
+        return detached_tensor
+    
+    def check_size_list(list_1,list_2):
+        """
+        Checks if two lists have the same size.
+
+        Args:
+            list_1 (list): The first list to compare.
+            list_2 (list): The second list to compare.
+
+        Raises:
+            AssertionError: If the two lists do not have the same size.
+        """
+        assert len(list_1) == len(list_2), "The two lists must have the same size."
+    
+    # @staticmethod
+    # def is_monotonic(data):
+    #     # JULIAN: I am pretty sure something like this already exists in numpy, but I am not sure about the exact name
+    #     # Check for monotonic increasing
+    #     is_increasing = np.all(data[:-1,0] <= data[1:,0])
+    #     # Check for monotonic decreasing
+    #     is_decreasing = np.all(data[:-1,0] >= data[1:,0])
+
+    #     return is_increasing or is_decreasing
     
     @staticmethod
     def is_monotonic(data):
-        # JULIAN: I am pretty sure something like this already exists in numpy, but I am not sure about the exact name
-        # Check for monotonic increasing
-        is_increasing = np.all(data[:-1,0] <= data[1:,0])
-        # Check for monotonic decreasing
-        is_decreasing = np.all(data[:-1,0] >= data[1:,0])
+        """
+        Checks if the data is monotonic (either increasing or decreasing) along the last dimension.
 
-        return is_increasing or is_decreasing
+        Args:
+            data (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+
+        Returns:
+            np.ndarray: A boolean array indicating if the data is monotonic for each sub-array.
+        """
+        # Check for monotonic increasing 
+        is_increasing = Helper.is_increasing(data)
+        # Check for monotonic decreasing 
+        is_decreasing = Helper.is_decreasing(data)
+        
+        # Combine the results to get the final monotonicity status for each sub-array in dim 1
+        return np.logical_or(is_increasing, is_decreasing)
+
+    @staticmethod
+    def is_increasing(data):
+        """
+        Checks if the data is monotonically increasing along the last dimension.
+
+        Args:
+            data (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+
+        Returns:
+            np.ndarray: A boolean array indicating if the data is increasing for each sub-array.
+        """
+        return np.all(data[:, :, :-1, 0] <= data[:, :, 1:, 0], axis=-1)
+    
+    @staticmethod
+    def is_decreasing(data):
+        """
+        Checks if the data is monotonically decreasing along the last dimension.
+
+        Args:
+            data (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+
+        Returns:
+            np.ndarray: A boolean array indicating if the data is decreasing for each sub-array.
+        """
+        return np.all(data[:, :, :-1, 0] >= data[:, :, 1:, 0], axis=-1)
     
     @staticmethod
     def return_data(adv_position, X, Y, future_action):
-        # JULIAN: Why do we return both X_new and X_new_adv? They them to be the same in any case
+        """
+        Splits or assigns the adversarial position data based on whether future action is included.
+
+        Args:
+            adv_position (torch.Tensor): A tensor containing the adversarial positions with shape (batch size, number agents, number time_steps, coordinates (x,y)).
+            X (torch.Tensor): A tensor containing the initial data with shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+            Y (torch.Tensor): A tensor containing the future data with shape (batch size, number agents, number future steps future, coordinates (x,y)).
+            future_action (bool): A boolean indicating whether future action is included.
+
+        Returns:
+            tuple: A tuple containing:
+                   - X_new (torch.Tensor): The updated adversarial X tensor.
+                   - Y_new (torch.Tensor): The updated adversarial Y tensor.
+        """
         if future_action:
-            X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=2)
-            X_new_adv = X_new
-            Y_new_adv = Y_new
+            X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=-2)
         else: 
             X_new = adv_position
             Y_new = Y
-            X_new_adv = adv_position
-            Y_new_adv = Y
 
-        return X_new, Y_new, X_new_adv, Y_new_adv
+        return X_new, Y_new
     
-    @staticmethod
-    def retrieve_name_attack(ADE_loss,ADE_loss_adv_future_GT,ADE_loss_adv_future_pred,collision_loss,fake_collision_loss_GT,fake_collision_loss_Pred,hide_collision_loss_GT,hide_collision_loss_Pred):
-         # Dictionary to hold the variables and their names
-        variables = {
-            "ADE_loss": ADE_loss,
-            "ADE_loss_adv_future_GT": ADE_loss_adv_future_GT,
-            "ADE_loss_adv_future_pred": ADE_loss_adv_future_pred,
-            "collision_loss": collision_loss,
-            "fake_collision_loss_GT": fake_collision_loss_GT,
-            "fake_collision_loss_Pred": fake_collision_loss_Pred,
-            "hide_collision_loss_GT": hide_collision_loss_GT,
-            "hide_collision_loss_Pred": hide_collision_loss_Pred,
-        }
-
-        # Loop through the dictionary and return the name of the variable that is True
-        for name, value in variables.items():
-            if value:
-                return name

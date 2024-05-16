@@ -15,6 +15,7 @@ from Adversarial_classes.spline import Spline
 
 from PIL import Image
 
+
 class Adversarial(perturbation_template):
     def check_and_extract_kwargs(self, kwargs):
         '''
@@ -30,28 +31,35 @@ class Adversarial(perturbation_template):
         None.
 
         '''
-        assert 'data_set_dict' in kwargs.keys(), "Adverserial model dataset is missing (required key: 'data_set_dict')."
-        assert 'data_param' in kwargs.keys(), "Adverserial model data param is missing (required key: 'data_param')."
-        assert 'splitter_dict' in kwargs.keys(), "Adverserial model splitter is missing (required key: 'splitter_dict')."
-        assert 'model_dict' in kwargs.keys(), "Adverserial model is missing (required key: 'model_dict')."
-        assert 'exp_parameters' in kwargs.keys(), "Adverserial model experiment parameters are missing (required key: 'exp_parameters')."
+        assert 'data_set_dict' in kwargs.keys(
+        ), "Adverserial model dataset is missing (required key: 'data_set_dict')."
+        assert 'data_param' in kwargs.keys(
+        ), "Adverserial model data param is missing (required key: 'data_param')."
+        assert 'splitter_dict' in kwargs.keys(
+        ), "Adverserial model splitter is missing (required key: 'splitter_dict')."
+        assert 'model_dict' in kwargs.keys(
+        ), "Adverserial model is missing (required key: 'model_dict')."
+        assert 'exp_parameters' in kwargs.keys(
+        ), "Adverserial model experiment parameters are missing (required key: 'exp_parameters')."
 
         assert kwargs['exp_parameters'][6] == 'predefined', "Perturbed datasets can only be used if the agents' roles are predefined."
 
         self.kwargs = kwargs
+        self.initialize_settings()
 
         # Check that in splitter dict the length of repetition is only 1 (i.e., only one splitting method)
         if isinstance(kwargs['splitter_dict']['repetition'], list):
 
             if len(kwargs['splitter_dict']['repetition']) > 1:
-                raise ValueError("The splitting dictionary neccessary to define the trained model used " + 
-                                "for the adversarial attack can only contain one singel repetition " + 
-                                "(i.e, the value assigned to the key 'repetition' CANNOT be a list with a lenght larger than one).")
-            
+                raise ValueError("The splitting dictionary neccessary to define the trained model used " +
+                                 "for the adversarial attack can only contain one singel repetition " +
+                                 "(i.e, the value assigned to the key 'repetition' CANNOT be a list with a lenght larger than one).")
+
             kwargs['splitter_dict']['repetition'] = kwargs['splitter_dict']['repetition'][0]
-        
+
         # Load the perturbation model
-        pert_data_set = data_interface(kwargs['data_set_dict'], kwargs['exp_parameters'])
+        pert_data_set = data_interface(
+            kwargs['data_set_dict'], kwargs['exp_parameters'])
         pert_data_set.reset()
 
         # Select or load repective datasets
@@ -61,37 +69,42 @@ class Adversarial(perturbation_template):
         pert_splitter_name = kwargs['splitter_dict']['Type']
         pert_splitter_rep = [kwargs['splitter_dict']['repetition']]
         pert_splitter_tp = kwargs['splitter_dict']['test_part']
-            
+
         pert_splitter_module = importlib.import_module(pert_splitter_name)
         pert_splitter_class = getattr(pert_splitter_module, pert_splitter_name)
-        
+
         # Initialize and apply Splitting method
-        pert_splitter = pert_splitter_class(pert_data_set, pert_splitter_tp, pert_splitter_rep)
+        pert_splitter = pert_splitter_class(
+            pert_data_set, pert_splitter_tp, pert_splitter_rep)
         pert_splitter.split_data()
-        
+
         # Extract per model dict
         if isinstance(kwargs['model_dict'], str):
-            pert_model_name   = kwargs['model_dict']
+            pert_model_name = kwargs['model_dict']
             pert_model_kwargs = {}
         elif isinstance(kwargs['model_dict'], dict):
-            assert 'model' in kwargs['model_dict'].keys(), "No model name is provided."
-            assert isinstance(kwargs['model_dict']['model'], str), "A model is set as a string."
+            assert 'model' in kwargs['model_dict'].keys(
+            ), "No model name is provided."
+            assert isinstance(kwargs['model_dict']['model'],
+                              str), "A model is set as a string."
             pert_model_name = kwargs['model_dict']['model']
             if not 'kwargs' in kwargs['model_dict'].keys():
                 pert_model_kwargs = {}
             else:
-                assert isinstance(kwargs['model_dict']['kwargs'], dict), "The kwargs value must be a dictionary."
+                assert isinstance(
+                    kwargs['model_dict']['kwargs'], dict), "The kwargs value must be a dictionary."
                 pert_model_kwargs = kwargs['model_dict']['kwargs']
         else:
             raise TypeError("The provided model must be string or dictionary")
-        
+
         # Get model class
         pert_model_module = importlib.import_module(pert_model_name)
         pert_model_class = getattr(pert_model_module, pert_model_name)
-        
+
         # Initialize the model
-        self.pert_model = pert_model_class(pert_model_kwargs, pert_data_set, pert_splitter, True)
-        
+        self.pert_model = pert_model_class(
+            pert_model_kwargs, pert_data_set, pert_splitter, True)
+
         # TODO: Check if self.pert_model can call the function that is needed later in perturb_batch (i.e., self.pert_model.adv_generation())
 
         # Train the model on the given training set
@@ -99,7 +112,77 @@ class Adversarial(perturbation_template):
 
         # Define the name of the perturbation method
         self.name = self.pert_model.model_file.split(os.sep)[-1][:-4]
-    
+
+    def initialize_settings(self):
+        # Plot input data and spline (if plot is True -> plot_spline can be set on True)
+        self.plot_input = False
+
+        # Spline settings
+        self.total_spline_values = 100
+
+        # Plot the loss over the iterations
+        self.plot_loss = False
+
+        # Plot the adversarial scene
+        self.static_adv_scene = False
+        self.animated_adv_scene = True
+
+        # Setting animated scene
+        self.control_action_graph = True
+
+        # Car size
+        self.car_length = 4.1
+        self.car_width = 1.7
+        self.wheelbase = 2.7
+
+        # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
+        self.flip_dimensions = True
+
+        # Select which agent in datasets to attack
+        self.tar_agent_index = 0
+        self.ego_agent_index = 1
+
+        # Initialize parameters
+        self.num_samples = 20  # Defined as (K) in our paper
+        self.max_number_iterations = 20
+
+        # absolute clamping values
+        self.epsilon_acc_absolute = 6
+        self.epsilon_curv_absolute = 0.2
+
+        # relative clamping values
+        self.epsilon_acc_relative = 2
+        self.epsilon_curv_relative = 0.05
+
+        # Learning decay
+        self.gamma = 1
+        self.alpha = 0.001
+
+        # Randomized smoothing
+        self.smoothing = False
+        self.num_samples_used_smoothing = 15 # Defined as .. in paper
+        self.sigma_acceleration = [0.05, 0.1]
+        self.sigma_curvature = [0.01, 0.05]
+        self.plot_smoothing = True
+        self.smoothing_method = 'control_action'   # 'position' or 'control_action'
+
+        # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
+        # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
+        self.loss_function = 'ADE'
+
+        # For barrier function select: 'Log', 'Spline' or None
+        self.barrier_function = 'Spline'
+
+        # Barrier function parameters
+        self.distance_threshold = 1
+        self.log_value = 1.2
+
+        # Time step
+        self.dt = self.kwargs['data_param']['dt']
+
+        # Do a assertion check on settings
+        self.assertion_check()
+
     def perturb_batch(self, X, Y, T, agent, Domain):
         '''
         This function takes a batch of data and generates perturbations.
@@ -133,422 +216,288 @@ class Adversarial(perturbation_template):
             This is the future perturbed data of the agents, in the form of a
             :math:`\{N_{samples} \times N_{agents} \times N_{O} \times 2\}` dimensional numpy array with float values. 
             If an agent is fully or at some timesteps partially not observed, then this can include np.nan values. 
-
-
         '''
-        # FREDERIK: I would suggest to move the following code into a separate function, as it is quite long and complex.
-        # (General rule of thumb is anything more than 50 lines needs to be split up into smaller functions. The true software
-        # engineering pros say 10 lines. This is 300+ lines.)
-        # Generally, try to somewhat abide by the Single Responsibility Principle, which means that a function should only
-        # do one thing. E.g. move the perturbation loop into a separate function.
-        # https://en.wikipedia.org/wiki/Single-responsibility_principle
-
+        
         # Debug mode
-        torch.autograd.set_detect_anomaly(True)
-        # FREDERIK: Be careful with this, as it can slow down the code significantly
-        # https://pytorch.org/docs/stable/autograd.html#debugging-and-anomaly-detection
+        # torch.autograd.set_detect_anomaly(True)
 
-        # settings
-        # Plot input data and spline (if plot is True -> plot_spline can be set on True) 
-        plot_input = True
-        plot_spline = True
+        # Prepare the data (ordering/spline/edge_cases)
+        X, X_copy, X_shape, Y, Y_copy, Y_shape, agent_order, spline_data = self.prepare_data(X, Y, agent)
 
-        # Spline settings
-        spline = True 
-        spline_interval = 100
-
-        # Plot the loss over the iterations
-        plot_loss = True
-        loss_store = []
-
-        # Plot the adversarial scene
-        static_adv_scene = True
-        animated_adv_scene = True
-
-        # Setting animated scene
-        control_action_bar = False
-        control_action_graph = True
-
-        # check if only one control action type is selected
-        Helper.assert_only_one_true_barrier(
-                control_action_bar,
-                control_action_graph
-            )
-        
-        # Car size
-        car_length = 4.1
-        car_width = 1.7
-        wheelbase = 2.7
-        # FREDERIK: These ought to be parameters passed to the function, not hardcoded here.
-        # Check with Julian though. (same goes with everything above and much of that below.)
-
-        # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
-        flip_dimensions = True
-
-        # Initialize parameters
-        num_samples = 20 # Defined as (K) in paper
-        iter_num = 20
-        epsilon_acc = 6
-        epsilon_curv = 0.2
-        # JULIAN: It likely makes sense to have two different epsilon values for the absolute clamping and the 
-        # clamping relative to the original trahectory
-        # FREDERIK: Our paper or what other paper? What is iter_num? Max or current number of iterations?
-
-        # Learning decay
-        learning_rate_decay = True
-        gamma = 1
-        alpha = 0.01
-
-        # Randomized smoothing 
-        smooth_perturbed_data = True
-        smooth_unperturbed_data = True
-        num_samples_smoothing = 5 # Defined as (R) in paper
-        num_samples_used_smoothing = 15 # Defined as (M) in paper -> need to be lower than (num_samples * num_samples_smoothing)
-        # FREDERIK: Use asserts to check that num_samples_used_smoothing is lower than num_samples * num_samples_smoothing.
-        # FREDERIK: I thought M had to be equal to K to fit within Julian's framework. Check with Julian.
-        sigmas = [0.05, 0.1]
-        plot_smoothing = True
-        smoothing_method = 'control_action'   # 'position' or 'control_action'
-
-        # JULIAN: Move all of the above here into the __init__ function, or a separate function that is called in the __init__ function
-
-        # remove nan from input and remember old shape
-        Y_shape = Y.shape
-        Y = Helper.remove_nan_values(Y)
-
-        # Select loss function (set 1 on True and the rest on False)
-        #ADE loss
-        ADE_loss = False
-        ADE_loss_adv_future_GT = False
-        ADE_loss_adv_future_pred = True
-
-        # Collision loss
-        collision_loss = False
-        fake_collision_loss_GT = False
-        fake_collision_loss_Pred = False
-        hide_collision_loss_GT = False
-        hide_collision_loss_Pred = False
-
-        Name_attack = Helper.retrieve_name_attack(
-            ADE_loss,
-            ADE_loss_adv_future_GT,
-            ADE_loss_adv_future_pred,
-            collision_loss,
-            fake_collision_loss_GT,
-            fake_collision_loss_Pred,
-            hide_collision_loss_GT,
-            hide_collision_loss_Pred
-        )
-
-        # check if only one loss function is activated
-        Helper.assert_only_one_true(
-                ADE_loss,
-                ADE_loss_adv_future_GT,
-                ADE_loss_adv_future_pred,
-                collision_loss,
-                fake_collision_loss_GT,
-                fake_collision_loss_Pred,
-                hide_collision_loss_GT,
-                hide_collision_loss_Pred
-            )
-
-        # FREDERIK: From a software engineering perspective, this is code smell. A better option would be
-        # a strategy design pattern, where you have a loss class that has a method calculate_loss, and then
-        # you have a class for each loss function that inherits from the loss class and implements the calculate_loss method.
-        # However, this might be too much for you to learn about right now, so it is fine for now.
-
-        # Barrier function (set 1 on true if barrier is activated and the rest on false, or all on false if no barrier is activated)
-        log_barrier = False
-        ADVDO_barrier = False
-        spline_barrier = True
-
-        # check if only one barrier function is activated
-        Helper.assert_only_one_true_barrier(
-                log_barrier,
-                ADVDO_barrier,
-                spline_barrier
-            )
-        # FREDERIK: Why can only one barrier function be activated? This seems like a limitation that is not necessary.
-        
-        # validation settings
-        Helper.validate_plot_settings(plot_input, plot_spline)
-        Helper.validate_plot_settings(spline, plot_spline)
-        Helper.validate_plot_settings(spline, spline_barrier)
-
-        # Barrier function parameters
-        distance_threshold = 1
-        log_value = 1.2
-
-
-        # JULIAN: Move all of the above here into the __init__ function, or a separate function that is called in the __init__ function
-        # Except for the two lines where you remove nan values from Y and store the shape of Y
-         
-        # Check edge case scenarios where agent is standing still
-        mask_values_X, mask_values_Y = Helper.masked_data(X, Y)
-        
-        # Create data and plot data if required
-        X, Y, agent_order, spline_data = self.create_data_plot(X, Y, agent, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline, plot_input,plot_spline)
-        
-        # Load images 
-        # img, img_m_per_px = self.load_images(X,Domain)
-        img, img_m_per_px = None, None
-
-        # Show image
-        # plot_img = Image.fromarray(img[0,0,:],'RGB')
-        # plot_img.show()
-        
-        # Make copy of the original data for plots
-        X_copy = X.copy()
-        Y_copy = Y.copy()
-
-        # Convert to tensor
-        X, Y, spline_data = Helper.convert_to_tensor(X, Y, spline_data)
-
-        # Check if future action is required
-        new_input, future_action = Helper.create_new_input(X,Y, ADE_loss_adv_future_GT,ADE_loss_adv_future_pred, fake_collision_loss_GT, fake_collision_loss_Pred, hide_collision_loss_GT, hide_collision_loss_Pred)
+        # Prepare data for adversarial attack (tensor/image prediction model)
+        X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict = self.prepare_data_attack(X, Y, spline_data)
 
         # Calculate initial control actions
-        dt = self.kwargs['data_param']['dt']
-        control_action, heading_init, velocity_init = Control_action.Reversed_Dynamical_Model(X, mask_values_X, flip_dimensions, new_input,dt)
-        control_action.requires_grad = True 
+        control_action, heading, velocity = Control_action.inverse_Dynamical_Model(positions_perturb=positions_perturb, dt=self.dt)
 
-        # FREDERIK: This should follow a standard adversarial structure:
-        # control_action = ...
-        # perturbation = torch.zeros_like(control_action)
-        # perturbation.requires_grad = True
-        # 
-        # for i in range(iter_num):
-        #    perturbation.grad = None
-        #
-        #    adv_position = Control_action.dynamical_model(new_input, control_action + perturbation, velocity_init, heading_init, dt)
-        #    loss = Loss.calculate_loss(...)
-        #    loss.backward()
-        #
-        #    perturbation -= alpha * perturbation.grad
-        #    perturbation = torch.clamp(perturbation, -epsilon, epsilon)  # clamp based on relative control action
-        #    perturbation = ... # clamp based on absolute control action
-        #    perturbation[:, 1:] = 0.0  # Remove perturbation from other agents
-        #
-        #    alpha *= gamma
+        # set to device
+        control_action, heading, velocity = Helper.set_device(self.pert_model.device,control_action, heading, velocity)
 
-        # By having a separate perturbation tensor, you can easily clamp the perturbation relative to the nominal control action.
-        # Furthermore, you can easily remove the perturbation from the other agents by setting the perturbation to zero for those agents.
+        # Create a tensor for the perturbation
+        perturbation = torch.zeros_like(control_action)
+        perturbation.requires_grad = True
 
-        # Storage for adversarial position
-        X_new_adv = torch.zeros_like(X)
-        Y_new_adv = torch.zeros_like(Y)
-        Pred_iter_1 = torch.zeros((Y.shape[0], num_samples, Y.shape[2], 2))
+        # Create relative clamping limits
+        control_actions_relative_low, control_actions_relative_high = self.relative_clamping(control_action)
 
-        # Clamp the control actions relative to ground truth (Not finished yet)
-        tensor_addition = torch.zeros_like(control_action)
-        tensor_addition[:,0] = epsilon_acc
-        tensor_addition[:,1] = epsilon_curv
+        # Store the loss for plot
+        loss_store = []
 
-        # JULIAN: Those function need to be done for the relative clamping
-        control_actions_clamp_low = control_action - tensor_addition
-        control_actions_clamp_high = control_action + tensor_addition
-
-        # JULIAN: It is likely easiest to aplly a torch minium with -epsilon_absolut to control_actions_clamp_low
-        # and a torch maximum with epsilon_absolut to control_actions_clamp_high, before then clamping the control actions
-        
         # Start the optimization of the adversarial attack
-        for i in range(iter_num):
+        for i in range(self.max_number_iterations):
             # Reset gradients
             control_action.grad = None
 
             # Calculate updated adversarial position
-            adv_position = Control_action.dynamical_model(new_input, control_action, velocity_init, heading_init,dt)
-
-            # check if control action are converted correctly
-            if i == 0:
-                Helper.check_conversion_control_action(adv_position, X, Y, future_action)
+            adv_position = Control_action.dynamical_model(control_action + perturbation, positions_perturb, heading, velocity, self.dt)
 
             # Split the adversarial position back to X and Y
-            X_new, Y_new, X_new_adv, Y_new_adv = Helper.return_data(adv_position, X, Y, future_action)
+            X_new, Y_new = Helper.return_data(adv_position, X, Y, future_action_included)
 
-            # Output forward pass
-            num_steps = Y.shape[2]
-                
             # Forward pass through the model
-            Pred_t = self.pert_model.predict_batch_tensor(X_new,T,Domain,img, img_m_per_px,num_steps,num_samples)
-            # FREDERIK: Get yourself a PEP8 linter. It will help you ensure that your code is consistent and readable.
-            # E.g. the lack of space between the comma and the next argument in the function call above.
+            Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, Domain=Domain, img=img, img_m_per_px=img_m_per_px, 
+                                                          num_steps=num_steps_predict, num_samples=self.num_samples)
 
-            # Store the first prediction
             if i == 0:
-                Pred_iter_1 = Pred_t.detach()
+                # check conversion
+                Helper.check_conversion(adv_position, positions_perturb)
 
-            # Calculate the loss
-            losses = Loss.calculate_loss(
-                        X,
-                        X_new,
-                        Y,
-                        Y_new,
-                        Pred_t,
-                        Pred_iter_1,
-                        ADE_loss,
-                        ADE_loss_adv_future_GT,
-                        ADE_loss_adv_future_pred,
-                        collision_loss,
-                        fake_collision_loss_GT,
-                        fake_collision_loss_Pred,
-                        hide_collision_loss_GT,
-                        hide_collision_loss_Pred,
-                        log_barrier,
-                        ADVDO_barrier,
-                        spline_barrier,
-                        distance_threshold,
-                        log_value,
-                        spline_data
-                        )
-            # JULIAN: Generally, when calling functions, it might be better if fully write out X = X, Y = Y, etc., so 
-            # that it is easier to comprehend potential differences when looking inside the function
+                # Store the first prediction
+                Y_Pred_iter_1 = Y_Pred.detach()
 
+            losses = self.loss_module(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data)
+            
             # Store the loss for plot
             loss_store.append(losses.detach().cpu().numpy())
             print(losses)
 
             # Calulate gradients
             losses.sum().backward()
-            grad = control_action.grad
-
-            # Include learning rate decay
-            if learning_rate_decay:
-                alpha = alpha * (gamma**i)
-            # JULIAN: This learning rate implementation is wrong, as you overwrite alpha. Either use
-            # alpha *= gamma, or define an intial value alpha_0 and then use alpha = alpha_0 * gamma**i
-            # FREDERIK: Update alpha _after_ you have used it in the optimization step, not before.
+            grad = perturbation.grad
 
             # Update Control inputs
             with torch.no_grad():
-                control_action[:,0,:,0].subtract_(grad[:,0,:,0], alpha=alpha)
-                control_action[:,0,:,1].subtract_(grad[:,0,:,1], alpha=alpha)
-                # JULIAN: Clamp here with the bounded values of control_actions_clamp_low and control_actions_clamp_high
-                control_action[:,0,:,0].clamp_(-epsilon_acc, epsilon_acc)
-                control_action[:,0,:,1].clamp_(-epsilon_curv, epsilon_curv)
-                control_action[:,1:] = 0.0
-                # FREDERIK: What does the indexing control_action[:,1:] = 0.0 do? If it is to remove perturbation for the ego vehicle,
-                # the this is wrong. With this, you force the other agent to stand still, which is not what you want.
-                # You should instead only perturb the first agent, and leave the other agents as they are.
+                perturbation.subtract_(grad, alpha=self.alpha)
+                perturbation[:,:,:,0].clamp_(-self.epsilon_acc_absolute, self.epsilon_acc_absolute)
+                perturbation[:,:,:,1].clamp_(-self.epsilon_curv_absolute, self.epsilon_curv_absolute)
+                perturbation.clamp_(control_actions_relative_low, control_actions_relative_high)
+                perturbation[:, 1:] = 0.0
 
-        # JULIAN: While this is okay right now, in the end, it would be preferable if this smoothing part is instead moved into the model module
-        # instead of the perturbation module
+            # Update the step size
+            self.alpha *= self.gamma
+
 
         # Gaussian smoothing module
-        X_pert_smoothed, Pred_pert_smoothed, X_unpert_smoothed, Pred_unpert_smoothed = Smoothing.randomized_smoothing(
-                X,
-                X_new_adv,
-                smooth_perturbed_data,
-                smooth_unperturbed_data,
-                num_samples,
-                sigmas,
-                T,
-                Domain, 
-                num_steps, 
-                num_samples_smoothing,
-                self.pert_model,
-                mask_values_X,
-                flip_dimensions,
-                dt,
-                epsilon_acc,
-                epsilon_curv,
-                smoothing_method,
-                img,
-                img_m_per_px,
-                num_samples_used_smoothing
-                )
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = self.smoothing_module(X, X_new, T, Domain, img, img_m_per_px, num_steps_predict, 
+                                                                                                 control_actions_relative_low, control_actions_relative_high)
 
         # Detach the tensor and convert to numpy
-        X_new_pert, Y_new_pert, Pred_t, Pred_iter_1 = Helper.detach_tensor(X_new_adv, Y_new_adv, Pred_t, Pred_iter_1)
+        X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data = Helper.detach_tensor(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1,spline_data)
+
+        # Plot the data
+
+        self.ploting_module(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,spline_data=spline_data,loss_store=loss_store,future_action=future_action_included, control_actions_relative_low=control_actions_relative_low, control_actions_relative_high=control_actions_relative_high)
 
         # Plot the results
-        Plot.plot_results(
-                X_copy, 
-                X_new_pert, 
-                Y_copy, 
-                Y_new_pert, 
-                Pred_t,
-                Pred_iter_1,
-                loss_store,
-                plot_loss,  
-                future_action,
-                static_adv_scene,
-                animated_adv_scene,
-                car_length,
-                car_width,
-                mask_values_X, 
-                mask_values_Y,
-                plot_smoothing,
-                X_pert_smoothed, 
-                Pred_pert_smoothed, 
-                X_unpert_smoothed, 
-                Pred_unpert_smoothed,
-                sigmas,
-                smoothing_method,
-                dt,
-                flip_dimensions,
-                epsilon_acc,
-                epsilon_curv,
-                control_action_bar,
-                control_action_graph,
-                wheelbase,
-                Name_attack
-            )
+        # Plot.plot_results(
+        #     X_copy,
+        #     X_new_pert,
+        #     Y_copy,
+        #     Y_new_pert,
+        #     Y_Pred,
+        #     Y_Pred_iter_1,
+        #     loss_store,
+        #     self.plot_loss,
+        #     future_action_included,
+        #     self.static_adv_scene,
+        #     self.animated_adv_scene,
+        #     self.car_length,
+        #     self.car_width,
+        #     mask_values_X,
+        #     mask_values_Y,
+        #     self.plot_smoothing,
+        #     X_pert_smoothed,
+        #     Pred_pert_smoothed,
+        #     X_unpert_smoothed,
+        #     Pred_unpert_smoothed,
+        #     self.sigmas,
+        #     self.dt,
+        #     self.flip_dimensions,
+        #     self.epsilon_acc_absolute,
+        #     self.epsilon_curv_absolute,
+        #     self.control_action_bar,
+        #     self.control_action_graph,
+        #     self.wheelbase,
+        #     self.loss_function
+        # )
 
         # Return Y to old shape
         Y_new_pert = Helper.return_to_old_shape(Y_new_pert, Y_shape)
 
-        if flip_dimensions:
-            agent_order_inverse = np.argsort(agent_order)
-            X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
-            Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
-        
-        return X_new_pert, Y_new_pert
+        # Flip dimensions back
+        X_new_pert, Y_new_pert = Helper.flip_dimensions_2(self.flip_dimensions, X_new_pert, Y_new_pert, agent_order)
 
-    def load_images(self,X,Domain):
-        Img_needed = np.zeros(X.shape[:2], bool)
-        Img_needed[:,0] = True
+        return X_new_pert, Y_new_pert
+    
+
+    def ploting_module(self,X,X_new,Y,Y_new,Y_Pred,Y_Pred_iter_1,spline_data,loss_store,future_action,control_actions_relative_low, control_actions_relative_high):
+        # Plot the input/spline data if required
+        if self.plot_input:
+            Plot.plot_static_data(X=X, X_new=None, Y=Y, Y_new=None, Y_Pred=None, Y_Pred_iter_1=None, spline_data=spline_data, future_action=False, plot_input=self.plot_input)
+
+        # Plot the loss over the iterations
+        if self.plot_loss:
+            Plot.plot_loss_over_iterations(loss_store)
+
+        # Plot the static adversarial scene
+        if self.static_adv_scene:
+            Plot.plot_static_data(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1, spline_data=spline_data, future_action=future_action, plot_input=False)
+
+        # Plot the animated adversarial scene  
+        if self.animated_adv_scene:
+            Plot.plot_animated_adv_scene(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,dt=self.dt,epsilon_acc_absolute=self.epsilon_acc_absolute,epsilon_curv_absolute=self.epsilon_curv_absolute,car_length=self.car_length,car_width=self.car_width,wheelbase=self.wheelbase,Name_attack=self.loss_function,future_action=future_action,control_action_graph=self.control_action_graph,tar_agent=self.tar_agent_index,device=self.pert_model.device,control_actions_relative_low=control_actions_relative_low, control_actions_relative_high=control_actions_relative_high)
+
+
+        # Plot the randomized smoothing
+        if self.plot_smoothing:
+            Plot.plot_smoothing(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,sigmas,X_pert_smoothed,Pred_pert_smoothed,X_unpert_smoothed,Pred_unpert_smoothed,smoothing_method)
+
+
+    
+    def loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data):
+        # calculate the loss
+        losses = Loss.calculate_loss(X=X,
+                                    X_new=X_new,
+                                    Y=Y,
+                                    Y_new=Y_new,
+                                    Y_Pred=Y_Pred,
+                                    Y_Pred_iter_1=Y_Pred_iter_1,
+                                    distance_threshold=self.distance_threshold,
+                                    log_value=self.log_value,
+                                    spline_data=spline_data,
+                                    loss_function=self.loss_function,
+                                    barrier_function=self.barrier_function,
+                                    tar_agent=self.tar_agent_index,
+                                    ego_agent=self.ego_agent_index)
         
+        return losses
+    
+    def smoothing_module(self,X, X_new, T, Domain, img, img_m_per_px, num_steps, control_actions_relative_low, control_actions_relative_high):
+        #initialize smoothing
+        smoothing = Smoothing(dt=self.dt,
+                              tar_agent=self.tar_agent_index,
+                              num_samples_smoothing=self.num_samples_used_smoothing,
+                              sigma_acceleration=self.sigma_acceleration,
+                              sigma_curvature=self.sigma_curvature,
+                              epsilon_acc_absolute=self.epsilon_acc_absolute,
+                              epsilon_curv_absolute=self.epsilon_curv_absolute,
+                              control_actions_relative_low=control_actions_relative_low,
+                              control_actions_relative_high=control_actions_relative_high,
+                              pert_model=self.pert_model,
+                              Domain=Domain,
+                              T=T,
+                              img=img,
+                              img_m_per_px=img_m_per_px,
+                              num_steps=num_steps)
+        
+        # Randomized smoothing
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = smoothing.randomized_smoothing(X, X_new, self.smoothing)
+
+        return X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv
+
+    def relative_clamping(self,control_action):
+        # Clamp the control actions relative to ground truth (Not finished yet)
+        tensor_addition = torch.zeros_like(control_action)
+        tensor_addition[:, 0] = self.epsilon_acc_relative
+        tensor_addition[:, 1] = self.epsilon_curv_relative
+
+        # JULIAN: Those function need to be done for the relative clamping
+        control_actions_clamp_low = control_action - tensor_addition
+        control_actions_clamp_high = control_action + tensor_addition
+
+        return control_actions_clamp_low, control_actions_clamp_high
+
+    def assertion_check(self):
+        # check if the size of both sigmas are the same
+        Helper.check_size_list(self.sigma_acceleration, self.sigma_curvature)
+
+
+    def load_images(self, X, Domain):
+        Img_needed = np.zeros(X.shape[:2], bool)
+        Img_needed[:, 0] = True
+
         if self.data.includes_images():
             if self.pert_model.grayscale:
                 channels = 1
             else:
                 channels = 3
-            img          = np.zeros((*Img_needed.shape, self.pert_model.target_height, self.pert_model.target_width, channels), np.uint8)
+            img = np.zeros((*Img_needed.shape, self.pert_model.target_height,
+                            self.pert_model.target_width, channels), np.uint8)
             img_m_per_px = np.ones(Img_needed.shape, np.float32) * np.nan
 
-            centre = X[Img_needed, -1,:]
-            x_rel = centre - X[Img_needed, -2,:]
-            rot = np.angle(x_rel[:,0] + 1j * x_rel[:,1]) 
+            centre = X[Img_needed, -1, :]
+            x_rel = centre - X[Img_needed, -2, :]
+            rot = np.angle(x_rel[:, 0] + 1j * x_rel[:, 1])
             domain_needed = Domain.iloc[np.where(Img_needed)[0]]
-            
+
             img[Img_needed] = self.data.return_batch_images(domain_needed, centre, rot,
-                                                            target_height = self.pert_model.target_height, 
-                                                            target_width = self.pert_model.target_width,
-                                                            grayscale = self.pert_model.grayscale,
-                                                            Imgs_rot = img[Img_needed],
-                                                            Imgs_index = np.arange(Img_needed.sum()))
-            
+                                                            target_height=self.pert_model.target_height,
+                                                            target_width=self.pert_model.target_width,
+                                                            grayscale=self.pert_model.grayscale,
+                                                            Imgs_rot=img[Img_needed],
+                                                            Imgs_index=np.arange(Img_needed.sum()))
+
             img_m_per_px[Img_needed] = self.data.Images.Target_MeterPerPx.loc[domain_needed.image_id]
         else:
             img = None
             img_m_per_px = None
 
         return img, img_m_per_px
-    
-    # JULIAN: This function name is a little bit misleading, especially long term if ther is no plotting involved
-    # Ideally, I would call flip_dimensions in the main function, and not do it inside this function
-    def create_data_plot(self, X, Y, agent, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline, plot_input, plot_spline):
-        # Flip the dimensions of the data if required
-        X, Y, agent_order = Helper.flip_dimensions(X, Y, agent, flip_dimensions)
+
+    def prepare_data(self, X, Y, agent):
+        # Remove nan from input and remember old shape
+        Y = Helper.remove_nan_values(data=Y)
+        X_shape = X.shape
+        Y_shape = Y.shape
+
+        # Flip dimensions agents
+        X, Y, agent_order = Helper.flip_dimensions(X=X, Y=Y, agent=agent, flip_dimensions=self.flip_dimensions)
+
+        # Make copy of the original flipped data for plots
+        X_copy = X.copy()
+        Y_copy = Y.copy()
 
         # Create spline data
-        spline_data = Spline.spline_data(X, Y, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline)
+        spline_data = Spline.spline_data(X=X, 
+                                         Y=Y,  
+                                         total_spline_values=self.total_spline_values)
 
-        # Plot the data if required
-        Plot.Plot_data(X, Y, spline_data, plot_input, plot_spline)
+        return X, X_copy, X_shape, Y, Y_copy, Y_shape, agent_order, spline_data
 
-        return X, Y, agent_order, spline_data
+    def prepare_data_attack(self, X, Y, spline_data):
+        # Convert to tensor
+        X, Y, spline_data = Helper.convert_to_tensor(self.pert_model.device, X, Y, spline_data)
+        
+        # Check if future action is required
+        positions_perturb, future_action_included = Helper.create_data_to_perturb(X=X, Y=Y, loss_function=self.loss_function)
+
+        mask_data = Helper.compute_mask_values_tensor(positions_perturb)
+
+        # Load images for adversarial attack
+        # img, img_m_per_px = self.load_images(X,Domain)
+        img, img_m_per_px = None, None
+
+        # Show image
+        # plot_img = Image.fromarray(img[0,0,:],'RGB')
+        # plot_img.show()
+
+        # Create storage for the adversarial prediction on nominal setting
+        Y_Pred_iter_1 = torch.zeros((Y.shape[0], self.num_samples, Y.shape[2], Y.shape[3]))
+        
+        # number of steps to predict
+        num_steps_predict = Y.shape[2]
+
+        return X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict
 
     def set_batch_size(self):
         '''
@@ -562,9 +511,8 @@ class Adversarial(perturbation_template):
 
         '''
 
-        self.batch_size = 2
+        self.batch_size = 1
 
-    
     def requirerments(self):
         '''
         This function returns the requirements for the data to be perturbed.
@@ -583,7 +531,7 @@ class Adversarial(perturbation_template):
 
         dt : float (optional)
             The time step of the data.
-        
+
 
         Returns
         -------
@@ -595,4 +543,3 @@ class Adversarial(perturbation_template):
         # TODO: Implement this function, use self.pert_model to get the requirements of the model.
 
         return {}
-    

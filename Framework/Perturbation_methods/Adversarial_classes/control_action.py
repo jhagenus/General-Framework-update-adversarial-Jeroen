@@ -1,124 +1,139 @@
 import torch
 
+
 class Control_action:
     @staticmethod
-    def Reversed_Dynamical_Model(X, mask_values_X, flip_dimensions, new_input,dt):
-        # JULIAN: We can simplify this a lot by implementing the following:
-        # Replace X with new_input, as X.shape[0] == new_input.shape[0]
-        # Rename the parameters to something more meaningful, as somebody reading this code might 
-        # not remember what new_input etc. where in the higher level code
-        # For example, we can rename mask_values_X to mask, and new_input to positions
+    def inverse_Dynamical_Model(positions_perturb, dt):
+        """
+        Computes the control actions, heading, and velocity of agents in a perturbed positions dataset.
 
-        # JULIAN: Write some preamble for the function, explaining what the parameters do
+        Args:
+            positions_perturb (torch.Tensor): A 4-dimensional tensor of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+            dt (float): The time difference between consecutive time steps.
+            device (torch.device): The device on which to perform the computations (e.g., 'cpu' or 'cuda').
 
+        Returns:
+            tuple: A tuple containing:
+                   - control_action (torch.Tensor): A tensor of shape (batch size, number agents, number time_steps - 1, 2)
+                     containing the control actions.
+                   - heading (torch.Tensor): A tensor of shape (batch size, number agents, number time_steps) containing the headings.
+                   - velocity (torch.Tensor): A tensor of shape (batch size, number agents, number time_steps) containing the velocities.
+        """
         # Initialize control action
-        control_action = torch.zeros_like(new_input)
+        control_action = torch.zeros(
+            (positions_perturb.shape[0], positions_perturb.shape[1], positions_perturb.shape[2]-1, positions_perturb.shape[3]))
 
         # Initialize heading and velocity
-        heading_init = torch.zeros(X.shape[0]).to(device='cuda')
-        velocity_init = torch.zeros(X.shape[0]).to(device='cuda')
+        heading = torch.zeros(positions_perturb.shape[:3])
+        velocity = torch.zeros(positions_perturb.shape[:3])
 
-        # JULIAN: Instead of using a for loop, we can instead use something like 
-        # control_action[mask_values_X] = 0, or control_action[~mask_values_X] = 0
-        for batch_idx in range(X.shape[0]):
-            # Check if the target agent is standing still set all control actions to zero
-            # JULIAN: why do we we have flip dimensions here? I the agent is not moving, does it really matter if we flip the dimensions or not?
-            if mask_values_X[batch_idx] == True and flip_dimensions == True:
-                # update initial velocity 
-                velocity_init[batch_idx] = 0
+        # update initial velocity and heading
+        velocity[:, :, 0] = Control_action.compute_velocity(positions_perturb, dt, 0)
+        heading[:, :, 0] = Control_action.compute_heading(positions_perturb, 0)
 
-                # update initial heading
-                heading_init[batch_idx] = Control_action.compute_heading(X, batch_idx, 0)
+        # Create a time step tensor
+        time_steps = torch.arange(positions_perturb.shape[2] - 1)
 
-                # update control actions
-                control_action[batch_idx,:,:,:] = 0 
-                          
-            else:
-                # Initialize storage for velocity and heading
-                velocity = torch.zeros(new_input.shape[2]).to(device='cuda')
-                angle = torch.zeros(new_input.shape[2]).to(device='cuda')
+        # Calculate velocities for all time steps
+        all_velocities = Control_action.compute_velocity(positions_perturb, dt, time_steps)
+        velocity[:, :, 1:] = all_velocities
 
-                # update initial velocity 
-                velocity_init[batch_idx] = velocity[0] = Control_action.compute_velocity(new_input, batch_idx, dt, 0)
+        # Calculate headings for all time steps
+        all_headings = Control_action.compute_heading(positions_perturb, time_steps)
+        heading[:, :, 1:] = all_headings
 
-                # update initial heading
-                heading_init[batch_idx] = angle[0] = Control_action.compute_heading(new_input, batch_idx,0)
+        # Update the acceleration control actions
+        control_action[:, :, :, 0] = (velocity[:, :, 1:] - velocity[:, :, :-1]) / dt
 
-                # JULIAN: It is liekly possible to vectorize this code, as the control actions are independent of each other
-                for i in range(new_input.shape[2]-1):
-                    # Calculate velocity for next time step
-                    velocity[i+1] = Control_action.compute_velocity(new_input, batch_idx, dt, i)
+        # Calculate the change of heading (yaw rate)
+        yaw_rate = (heading[:, :, 1:] - heading[:, :, :-1]) / dt
 
-                    # Update the control actions
-                    control_action[batch_idx,0,i,0] = (velocity[i+1] - velocity[i]) / dt 
+        # update the curvature control actions
+        control_action[:, :, :, 1] = yaw_rate / velocity[:, :, :-1]
 
-                    # Calculate the heading for the next time step   
-                    angle[i+1] = Control_action.compute_heading(new_input, batch_idx,i)
+        return control_action, heading, velocity
 
-                    # Calculate the change of heading for the next time step
-                    d_yaw_rate = (angle[i+1] - angle[i]) / dt
-                    # FREDERIK: This is just yaw_rate (rate of change in angle), not d_yaw_rate (rate of change in yaw rate), right?
-
-                    # Calculate the curvature 
-                    curvature = d_yaw_rate / velocity[i]
-                    control_action[batch_idx,0,i,1] = curvature 
-
-                    # FREDERIK: Is it possible to let d_yaw_rate/yaw_rate be the control action instead of curvature?
-
-        # JULIAN: Using torch.nan_to_num to replace inf values is likely better, as you can distinguish between inf and -inf values
-        control_action[torch.isinf(control_action)] = 1e-6
-        # JULIAN: Right now, you have a last timestep in control_action that you never use. Therefore, it might be better if
-        # you initialize control action to be 1 step shorter along the time dimension.
-        # JULIAN: Additionally, as we only perturb the first agent (i.e., [:,0]), it might be easier to simply remove the agent dimension 
-        # from control action
-        # FREDERIK: Why does some control actions become inf?
-
-        return control_action, heading_init, velocity_init
-    
     @staticmethod
-    def compute_heading(X, batch_idx, index):
-        # JULIAN: It might be more comprehensible, if we assume that X has no agent dimension, and instead 
-        # put in the [:,0] when we call the function
+    def compute_heading(data, time_step):
+        """
+        Computes the heading angle in a dataset between two consecutive time steps.
 
+        Args:
+            data (torch.Tensor): A 4-dimensional tensor of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+            time_step (int): The index of the time step to compute the heading from.
+
+        Returns:
+            torch.Tensor: A tensor containing the heading angles (in radians) for each point, with shape (batch_size, number agents).
+        """
         # Calculate dx and dy
-        dx = X[batch_idx, 0, index + 1, 0] - X[batch_idx, 0, index, 0]  
-        dy = X[batch_idx, 0, index + 1, 1] - X[batch_idx, 0, index, 1]  
-        return torch.atan2(dy, dx) 
-    
+        dx = data[:, :, time_step + 1, 0] - data[:, :, time_step, 0]
+        dy = data[:, :, time_step + 1, 1] - data[:, :, time_step, 1]
+
+        # Compute heading using atan2
+        heading = torch.atan2(dy, dx)
+
+        return heading
+
     @staticmethod
-    def compute_velocity(X, batch_idx, dt, index):
-        # JULIAN: See the comment in compute_heading
-        # FREDERIK: [:] along the last dimension? Is that only x and y or does the state include more things?
-        # If yes, then the velocity is incorrectly calculated.
-        # FREDERIK: What is `index`?
-        # FREDERIK: Please add a comment to explain the order of indexing in the X tensor.
-        return torch.linalg.norm(X[batch_idx,0,index + 1,:] - X[batch_idx,0,index,:] , dim=-1, ord = 2) / dt
-    
+    def compute_velocity(data, dt, time_step):
+        """
+        Computes the velocity of agents in a dataset between two consecutive time steps.
+
+        Args:
+            data (torch.Tensor): A 4-dimensional tensor of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+            dt (float): The time difference between consecutive time steps.
+            time_step (int): The index of the time step to compute the velocity from.
+
+        Returns:
+            torch.Tensor: A tensor containing the velocities for each agent, with shape (batch size, number agents).
+        """
+        # Compute the displacement between consecutive time steps
+        displacement = data[:, :, time_step + 1, :] - data[:, :, time_step, :]
+
+        # Compute the Euclidean norm of the displacement (velocity magnitude)
+        velocity = torch.linalg.norm(displacement, dim=-1, ord=2) / dt
+
+        return velocity
+
     @staticmethod
-    def dynamical_model(new_input, control_action, velocity_init, heading_init, dt):
-        # JULIAN: Ass mentioned above, code gets more comprehensible if we eliminate
-        # unneeded function arguments (such as new_input, we can use control_action instead to get the required shape)
-        
+    def dynamical_model(control_action, positions_perturb, heading, velocity, dt):
+        """
+        Computes the updated positions of agents based on the dynamical model using control actions, initial postion, velocity, and heading.
+
+        Args:
+            control_action (torch.Tensor): A tensor of shape (batch size, number agents, number time_steps - 1, 2) containing the control actions.
+            positions_perturb (torch.Tensor): A 4-dimensional tensor of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+            velocity (torch.Tensor): A tensor of shape (batch size, number agents, number time_steps) containing the velocities.
+            heading (torch.Tensor): A tensor of shape (batch size, number agents, number time_steps) containing the headings.
+            dt (float): The time difference between consecutive time steps.
+
+        Returns:
+            torch.Tensor: A tensor containing the updated positions of agents, with shape (batch size, number agents, number time_steps, coordinates (x,y)).
+        """
+        # Initial velocity and headin
+        velocity_init = velocity[:, :, 0]
+        heading_init = heading[:, :, 0]
+
         # Adversarial position storage
-        adv_position = new_input.clone().detach()
+        adv_position = positions_perturb.clone().detach()
 
         # Update adversarial position based on dynamical model
-        acc = control_action[:,0,:-1,0]
-        cur = control_action[:,0,:-1,1]
+        acc = control_action[:, :, :, 0]
+        cur = control_action[:, :, :, 1]
 
         # Calculate the velocity for all time steps
-        Velocity_set = torch.cumsum(acc, dim=1) * dt + velocity_init.unsqueeze(1)
-        Velocity = torch.cat((velocity_init.unsqueeze(1), Velocity_set), dim=1)
+        Velocity_set = torch.cumsum(acc, dim=-1) * dt + velocity_init.unsqueeze(-1)
+        Velocity = torch.cat((velocity_init.unsqueeze(-1), Velocity_set), dim=-1)
 
         # Calculte the change of heading for all time steps
-        D_yaw_rate = Velocity[:,:-1] * cur
+        D_yaw_rate = Velocity[:, :, :-1] * cur
 
         # Calculate Heading for all time steps
-        Heading = torch.cumsum(D_yaw_rate, dim=1) * dt + heading_init.unsqueeze(1)
-        Heading = torch.cat((heading_init.unsqueeze(1), Heading), dim=1)
+        Heading = torch.cumsum(D_yaw_rate, dim=-1) * dt + heading_init.unsqueeze(-1)
+        Heading = torch.cat((heading_init.unsqueeze(-1), Heading), dim=-1)
 
         # Calculate the new position for all time steps
-        adv_position[:, 0, 1:, 0] = torch.cumsum(Velocity[:,1:] * torch.cos(Heading[:,1:]), dim=1) * dt + adv_position[:, 0, 0, 0].unsqueeze(1)
-        adv_position[:, 0, 1:, 1] = torch.cumsum(Velocity[:,1:] * torch.sin(Heading[:,1:]), dim=1) * dt + adv_position[:, 0, 0, 1].unsqueeze(1)
+        adv_position[:, :, 1:, 0] = torch.cumsum(Velocity[:, :, 1:] * torch.cos(Heading[:, :, 1:]), dim=-1) * dt + adv_position[:, :, 0, 0].unsqueeze(-1)
+        adv_position[:, :, 1:, 1] = torch.cumsum(Velocity[:, :, 1:] * torch.sin(Heading[:, :, 1:]), dim=-1) * dt + adv_position[:, :, 0, 1].unsqueeze(-1)
 
         return adv_position

@@ -5,69 +5,32 @@ from Adversarial_classes.helper import Helper
 
 class Spline:
     @staticmethod
-    def spline_data(X, Y, mask_values_X, mask_values_Y, flip_dimensions, spline_interval, spline):
-        if spline == False:
-            return None
-        
-        # Combine historical and future data
-        # JULIAN: Using axis = -2 is safer, as there might be additional axes previously (e.g., for 20 predictions)
-        Spline_input_values = np.concatenate((X,Y),axis=2)
-        
-        # Check edge case scenarios where agent is standing 
-        # JULIAN: This whole thing right now is very dangerous, as it is only valid in this certain scenario
-        # JULIAN: try to rewrite it to be also applicable for different scenarios
-        # JULIAN: Additionally, I am not sure if monotony is actually necessary here
-        if flip_dimensions:
-            # JULIAN: This could easily be vectorized
-            for batch_idx in range(X.shape[0]):
-                # Check if the target agent is standing still in historical data
-                if mask_values_X[batch_idx] == True:
-                    # check if the agent moves in the future data -> store the first and last point of historical data -> store all future data -> set the rest to nan
-                    if mask_values_Y[batch_idx] == False:
-                            Spline_input_values[batch_idx,0,1,:] = Spline_input_values[batch_idx,0,X.shape[2],:]
-                            Spline_input_values[batch_idx,0,2:2+Y.shape[2],:] = Spline_input_values[batch_idx,0,X.shape[2]:,:]
-                            Spline_input_values[batch_idx, 0, 2+Y.shape[2]:,:] = np.nan
+    def spline_data(X, Y, total_spline_values):
+        # concatenate the data
+        data = np.concatenate((X,Y),axis=-2)
 
-                    # check if the agent is standing still in the future data -> store the lastest future point -> set the rest to nan (bug in data recording)
-                    else:
-                        for i in reversed(range(Spline_input_values.shape[2])):
-                            # Check if the new positions in the future data are smaller than the last position in the historical data
-                            if Spline_input_values[batch_idx, 0, i, 0] < Spline_input_values[batch_idx, 0, 0, 0]:
-                                Spline_input_values[batch_idx,0,1,:] = Spline_input_values[batch_idx,0,i,:]
-                                Spline_input_values[batch_idx, 0, 2:,:] = np.nan
-                                break
-                
-                # Remove values that are not monotonic For the spline function
-                i = 1
-                while i < Spline_input_values.shape[2]:
-                    if Spline_input_values[batch_idx, 0, i, 0] > Spline_input_values[batch_idx, 0, i - 1, 0]:
-                        Spline_input_values[batch_idx, 0, i-1:,:] = np.nan
-                        break
-                    else:
-                        i += 1
+        # check if data monotonic _> needed for spline function -> flip X,Y values if not
+        monotonic_data = Helper.is_monotonic(data)
+        data[~monotonic_data, :, :] = np.flip(data[~monotonic_data, :, :], axis=-1)
 
-        # Initialize spline data
-        spline_data = np.zeros((X.shape[0],spline_interval,2))
+        # check if values are increasing -> needed for spline function -> flip trajectory if not
+        increasing_data = Helper.is_increasing(data)
+        data[~increasing_data, :, :] = np.flip(data[~increasing_data, :, :], axis=-2)
 
-        # Spline historical data
-        for i in range(X.shape[0]):
-            # Extract the spline data
-            sample_spline = Spline_input_values[i,0,:,:]
+        # Cubic spline data
+        spline_data = np.empty((X.shape[0], X.shape[1], total_spline_values, X.shape[3]))
 
-            # Remove NaN values
-            sample_spline = sample_spline[~np.isnan(sample_spline).any(axis=1)]
+        # Spline all the data
+        for i in range(spline_data.shape[0]):
+            for j in range(spline_data.shape[1]):
+                x = np.linspace(data[i, j, 0, 0], data[i, j, -1, 0], total_spline_values)
+                cs = CubicSpline(data[i, j, :, 0], data[i, j, :, 1])
+                spline_data[i, j, :, 0] = x
+                spline_data[i, j, :,1] = cs(x)
 
-            # Flip data if it is not in the correct order for cubic spline funciton
-            if sample_spline[0,0] > sample_spline[-1,0]:
-                sample_spline[:,0] = np.flip(sample_spline[:,0])
-            if sample_spline[0,1] > sample_spline[-1,1]:
-                sample_spline[:,1] = np.flip(sample_spline[:,1])
-
-            # Sample from cubic spline function
-            Spline_function = CubicSpline(sample_spline[:,0], sample_spline[:,1])
-            xs = np.linspace(sample_spline[0,0], sample_spline[-1,0], spline_interval)
-            spline_data[i,:,0] = xs
-            spline_data[i,:,1] = Spline_function(xs)
+        # Translate back to original data
+        spline_data[~increasing_data, :, :] = np.flip(spline_data[~increasing_data, :, :], axis=-2)
+        spline_data[~monotonic_data, :, :] = np.flip(spline_data[~monotonic_data, :, :], axis=-1)
 
         return spline_data
     

@@ -375,8 +375,10 @@ class trajectron_salzmann_old_copy(model_template):
     def rotate_pos_matrix_tensor(self, M, rot_angle):
         assert M.shape[-1] == 2
         assert M.shape[0] == len(rot_angle)
-        
-        rot_angle_tensor = torch.tensor(rot_angle, dtype=torch.float32)
+
+
+        rot_angle_tensor = rot_angle.to(dtype=torch.float32)
+        # rot_angle_tensor = torch.tensor(rot_angle, dtype=torch.float32)
         cos_rot = torch.cos(rot_angle_tensor)
         sin_rot = torch.sin(rot_angle_tensor)
         

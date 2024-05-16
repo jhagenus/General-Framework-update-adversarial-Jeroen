@@ -59,7 +59,6 @@ class data_interface(object):
                 pert_module = importlib.import_module(pert_name)
                 pert_class = getattr(pert_module, pert_name)
 
-
                 Perturbation = pert_class(perturbation)
 
             else:
