@@ -6,6 +6,18 @@ from Adversarial_classes.helper import Helper
 class Spline:
     @staticmethod
     def spline_data(X, Y, total_spline_values,figure):
+        """
+        Process data with cubic spline interpolation after checking monotonicity and increasing order,
+        ensuring x-values are increasing by adding small increments where necessary.
+
+        Parameters:
+        X, Y (numpy.ndarray): Input data arrays.
+        total_spline_values (int): Number of spline values to generate.
+        figure: Not used in this function but included for completeness.
+
+        Returns:
+        numpy.ndarray: Spline interpolated data.
+        """
         # concatenate the data
         data = np.concatenate((X,Y),axis=-2)
 
@@ -27,7 +39,6 @@ class Spline:
         
         # Cubic spline data
         spline_data = np.empty((X.shape[0], X.shape[1], total_spline_values, X.shape[3]))
-
 
         # Spline all the data
         for i in range(spline_data.shape[0]):
