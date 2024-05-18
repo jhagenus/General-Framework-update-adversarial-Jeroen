@@ -314,6 +314,27 @@ class Helper:
         detached_tensor = [arg.detach().cpu().numpy() for arg in args]
         return detached_tensor
     
+    @staticmethod
+    def relative_clamping(control_action, epsilon_acc_relative, epsilon_curv_relative):
+        # Clamp the control actions relative to ground truth (Not finished yet)
+        tensor_addition = torch.zeros_like(control_action)
+        tensor_addition[:,:,:,0] = epsilon_acc_relative
+        tensor_addition[:,:,:,1] = epsilon_curv_relative
+
+        # JULIAN: Those function need to be done for the relative clamping
+        control_actions_clamp_low = control_action - tensor_addition
+        control_actions_clamp_high = control_action + tensor_addition
+
+        return control_actions_clamp_low, control_actions_clamp_high
+    
+    @staticmethod
+    def convert_data(data,index_batch,index_agent,prediction):
+        if prediction:
+            data = np.mean(data,axis=1)
+            return np.expand_dims(np.expand_dims(data[index_batch, :, :], axis=0), axis=0)
+        else: 
+            return np.expand_dims(np.expand_dims(data[index_batch, index_agent, :, :], axis=0), axis=0)
+    
     def check_size_list(list_1,list_2):
         """
         Checks if two lists have the same size.

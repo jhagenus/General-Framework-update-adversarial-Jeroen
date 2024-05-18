@@ -115,16 +115,16 @@ class Adversarial(perturbation_template):
 
     def initialize_settings(self):
         # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = False
+        self.plot_input = True
 
         # Spline settings
         self.total_spline_values = 100
 
         # Plot the loss over the iterations
-        self.plot_loss = False
+        self.plot_loss = True
 
         # Plot the adversarial scene
-        self.static_adv_scene = False
+        self.static_adv_scene = True
         self.animated_adv_scene = True
 
         # Setting animated scene
@@ -156,10 +156,10 @@ class Adversarial(perturbation_template):
 
         # Learning decay
         self.gamma = 1
-        self.alpha = 0.001
+        self.alpha = 0.1
 
         # Randomized smoothing
-        self.smoothing = False
+        self.smoothing = True
         self.num_samples_used_smoothing = 15 # Defined as .. in paper
         self.sigma_acceleration = [0.05, 0.1]
         self.sigma_curvature = [0.01, 0.05]
@@ -237,16 +237,13 @@ class Adversarial(perturbation_template):
         perturbation = torch.zeros_like(control_action)
         perturbation.requires_grad = True
 
-        # Create relative clamping limits
-        control_actions_relative_low, control_actions_relative_high = self.relative_clamping(control_action)
-
         # Store the loss for plot
         loss_store = []
 
         # Start the optimization of the adversarial attack
         for i in range(self.max_number_iterations):
             # Reset gradients
-            control_action.grad = None
+            perturbation.grad = None
 
             # Calculate updated adversarial position
             adv_position = Control_action.dynamical_model(control_action + perturbation, positions_perturb, heading, velocity, self.dt)
@@ -278,58 +275,34 @@ class Adversarial(perturbation_template):
             # Update Control inputs
             with torch.no_grad():
                 perturbation.subtract_(grad, alpha=self.alpha)
-                perturbation[:,:,:,0].clamp_(-self.epsilon_acc_absolute, self.epsilon_acc_absolute)
-                perturbation[:,:,:,1].clamp_(-self.epsilon_curv_absolute, self.epsilon_curv_absolute)
-                perturbation.clamp_(control_actions_relative_low, control_actions_relative_high)
+                perturbation[:,:,:,0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
+                perturbation[:,:,:,1].clamp_(-self.epsilon_curv_relative, self.epsilon_curv_relative)
+
+                control_action_perturbed = control_action + perturbation
+                control_action_perturbed[:, :, :, 0].clamp_(-self.epsilon_acc_absolute, self.epsilon_acc_absolute)
+                control_action_perturbed[:, :, :, 1].clamp_(-self.epsilon_curv_absolute, self.epsilon_curv_absolute)
+                
+                perturbation.copy_(control_action_perturbed - control_action)
+                #perturbation + controlaction
                 perturbation[:, 1:] = 0.0
 
             # Update the step size
             self.alpha *= self.gamma
 
+        # Calculate the final adversarial position
+        adv_position = Control_action.dynamical_model(control_action + perturbation, positions_perturb, heading, velocity, self.dt)
+
+        # Split the adversarial position back to X and Y
+        X_new, Y_new = Helper.return_data(adv_position, X, Y, future_action_included)
 
         # Gaussian smoothing module
-        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = self.smoothing_module(X, X_new, T, Domain, img, img_m_per_px, num_steps_predict, 
-                                                                                                 control_actions_relative_low, control_actions_relative_high)
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = self.smoothing_module(control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps_predict)
 
         # Detach the tensor and convert to numpy
-        X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data = Helper.detach_tensor(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1,spline_data)
+        X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data = Helper.detach_tensor(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data)
 
         # Plot the data
-
-        self.ploting_module(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,spline_data=spline_data,loss_store=loss_store,future_action=future_action_included, control_actions_relative_low=control_actions_relative_low, control_actions_relative_high=control_actions_relative_high)
-
-        # Plot the results
-        # Plot.plot_results(
-        #     X_copy,
-        #     X_new_pert,
-        #     Y_copy,
-        #     Y_new_pert,
-        #     Y_Pred,
-        #     Y_Pred_iter_1,
-        #     loss_store,
-        #     self.plot_loss,
-        #     future_action_included,
-        #     self.static_adv_scene,
-        #     self.animated_adv_scene,
-        #     self.car_length,
-        #     self.car_width,
-        #     mask_values_X,
-        #     mask_values_Y,
-        #     self.plot_smoothing,
-        #     X_pert_smoothed,
-        #     Pred_pert_smoothed,
-        #     X_unpert_smoothed,
-        #     Pred_unpert_smoothed,
-        #     self.sigmas,
-        #     self.dt,
-        #     self.flip_dimensions,
-        #     self.epsilon_acc_absolute,
-        #     self.epsilon_curv_absolute,
-        #     self.control_action_bar,
-        #     self.control_action_graph,
-        #     self.wheelbase,
-        #     self.loss_function
-        # )
+        self.ploting_module(X,X_new,Y,Y_new,Y_Pred,Y_Pred_iter_1,spline_data,loss_store,future_action_included,control_action,perturbation,X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv)
 
         # Return Y to old shape
         Y_new_pert = Helper.return_to_old_shape(Y_new_pert, Y_shape)
@@ -340,27 +313,28 @@ class Adversarial(perturbation_template):
         return X_new_pert, Y_new_pert
     
 
-    def ploting_module(self,X,X_new,Y,Y_new,Y_Pred,Y_Pred_iter_1,spline_data,loss_store,future_action,control_actions_relative_low, control_actions_relative_high):
+    def ploting_module(self,X,X_new,Y,Y_new,Y_Pred,Y_Pred_iter_1,spline_data,loss_store,future_action,control_action,perturbation, X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv):
+        # Initialize the plot class
+        plot = Plot(future_action=future_action, dt=self.dt, control_action_graph=self.control_action_graph, device=self.pert_model.device, tar_agent=self.tar_agent_index, ego_agent=self.ego_agent_index, epsilon_acc_relative=self.epsilon_acc_relative, epsilon_curv_relative=self.epsilon_curv_relative, epsilon_acc_absolute=self.epsilon_acc_absolute, epsilon_curv_absolute=self.epsilon_curv_absolute, wheelbase=self.wheelbase, car_length=self.car_length, car_width=self.car_width, loss_function=self.loss_function,sigma_acceleration=self.sigma_acceleration,sigma_curvature=self.sigma_curvature)
         # Plot the input/spline data if required
         if self.plot_input:
-            Plot.plot_static_data(X=X, X_new=None, Y=Y, Y_new=None, Y_Pred=None, Y_Pred_iter_1=None, spline_data=spline_data, future_action=False, plot_input=self.plot_input)
+            plot.plot_static_data(X=X, X_new=None, Y=Y, Y_new=None, Y_Pred=None, Y_Pred_iter_1=None, spline_data=spline_data, plot_input=self.plot_input)
 
         # Plot the loss over the iterations
         if self.plot_loss:
-            Plot.plot_loss_over_iterations(loss_store)
+            plot.plot_loss_over_iterations(loss_store)
 
         # Plot the static adversarial scene
         if self.static_adv_scene:
-            Plot.plot_static_data(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1, spline_data=spline_data, future_action=future_action, plot_input=False)
+            plot.plot_static_data(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1, spline_data=spline_data, plot_input=False)
 
         # Plot the animated adversarial scene  
         if self.animated_adv_scene:
-            Plot.plot_animated_adv_scene(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,dt=self.dt,epsilon_acc_absolute=self.epsilon_acc_absolute,epsilon_curv_absolute=self.epsilon_curv_absolute,car_length=self.car_length,car_width=self.car_width,wheelbase=self.wheelbase,Name_attack=self.loss_function,future_action=future_action,control_action_graph=self.control_action_graph,tar_agent=self.tar_agent_index,device=self.pert_model.device,control_actions_relative_low=control_actions_relative_low, control_actions_relative_high=control_actions_relative_high)
-
+            plot.plot_animated_adv_scene(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,control_action=control_action,perturbed_control_action=control_action+perturbation)
 
         # Plot the randomized smoothing
         if self.plot_smoothing:
-            Plot.plot_smoothing(X,X_new_pert,Y,Y_new_pert,Pred_t,Pred_iter_1,future_action,sigmas,X_pert_smoothed,Pred_pert_smoothed,X_unpert_smoothed,Pred_unpert_smoothed,smoothing_method)
+            plot.plot_smoothing(X,X_new,Y,Y_new,Y_Pred,Y_Pred_iter_1,future_action,X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv)
 
 
     
@@ -382,17 +356,22 @@ class Adversarial(perturbation_template):
         
         return losses
     
-    def smoothing_module(self,X, X_new, T, Domain, img, img_m_per_px, num_steps, control_actions_relative_low, control_actions_relative_high):
+    def smoothing_module(self, control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps):
         #initialize smoothing
-        smoothing = Smoothing(dt=self.dt,
+        smoothing = Smoothing(control_action=control_action, 
+                              control_action_perturbed= control_action+perturbation,
+                              adv_position=adv_position,
+                              velocity=velocity,
+                              heading=heading,
+                              dt=self.dt,
                               tar_agent=self.tar_agent_index,
                               num_samples_smoothing=self.num_samples_used_smoothing,
                               sigma_acceleration=self.sigma_acceleration,
                               sigma_curvature=self.sigma_curvature,
                               epsilon_acc_absolute=self.epsilon_acc_absolute,
                               epsilon_curv_absolute=self.epsilon_curv_absolute,
-                              control_actions_relative_low=control_actions_relative_low,
-                              control_actions_relative_high=control_actions_relative_high,
+                              epsilon_acc_relative=self.epsilon_acc_relative,
+                              epsilon_curv_relative=self.epsilon_curv_relative,
                               pert_model=self.pert_model,
                               Domain=Domain,
                               T=T,
@@ -401,21 +380,9 @@ class Adversarial(perturbation_template):
                               num_steps=num_steps)
         
         # Randomized smoothing
-        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = smoothing.randomized_smoothing(X, X_new, self.smoothing)
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = smoothing.randomized_smoothing(self.smoothing)
 
         return X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv
-
-    def relative_clamping(self,control_action):
-        # Clamp the control actions relative to ground truth (Not finished yet)
-        tensor_addition = torch.zeros_like(control_action)
-        tensor_addition[:, 0] = self.epsilon_acc_relative
-        tensor_addition[:, 1] = self.epsilon_curv_relative
-
-        # JULIAN: Those function need to be done for the relative clamping
-        control_actions_clamp_low = control_action - tensor_addition
-        control_actions_clamp_high = control_action + tensor_addition
-
-        return control_actions_clamp_low, control_actions_clamp_high
 
     def assertion_check(self):
         # check if the size of both sigmas are the same
