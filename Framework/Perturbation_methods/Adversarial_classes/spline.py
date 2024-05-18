@@ -5,7 +5,7 @@ from Adversarial_classes.helper import Helper
 
 class Spline:
     @staticmethod
-    def spline_data(X, Y, total_spline_values):
+    def spline_data(X, Y, total_spline_values,figure):
         # concatenate the data
         data = np.concatenate((X,Y),axis=-2)
 
@@ -17,8 +17,17 @@ class Spline:
         increasing_data = Helper.is_increasing(data)
         data[~increasing_data, :, :] = np.flip(data[~increasing_data, :, :], axis=-2)
 
+        # guarantee that the x values are increasing
+        standing_still = Helper.compute_mask_values_standing_still(data)
+        index_dim_2 = np.arange(data.shape[2])[:, np.newaxis]
+        increment = index_dim_2 * 0.001
+        increment = np.broadcast_to(increment, data.shape)
+
+        data[standing_still] += increment[standing_still]
+        
         # Cubic spline data
         spline_data = np.empty((X.shape[0], X.shape[1], total_spline_values, X.shape[3]))
+
 
         # Spline all the data
         for i in range(spline_data.shape[0]):
@@ -34,59 +43,4 @@ class Spline:
 
         return spline_data
     
-    @staticmethod
-    def interpolate_points(data,num_interpolations,agent,mask_values_X = False,mask_values_Y = False):
-        # Flip agent to make x values monotonic
-
-        # JULIAN: I think that this whole aspect is far to complicated. Especially with the generation of the interpolated points
-        # JULIAN: One can analittically calculate the shortest distance of a point to a line between two other points.
-        # JULIAN: Simply do this for all the line segemnts in the trajectory, and then choose the minimum distance
-        # JULIAN: Doing this will likely be much faster because of more efficient vectorization as well.
-        # JULIAN: See first answer at https://math.stackexchange.com/questions/330269/the-distance-from-a-point-to-a-line-segment
-        monotonic = Helper.is_monotonic(data)
-        if agent == 'target':
-            if mask_values_X or mask_values_Y:
-                if monotonic:
-                    new_data = np.flip(data, axis=0)
-                else:
-                    new_data = np.flip(np.flip(data, axis=1),axis=0)
-                # add offset because some valus are the same
-                for i in range(1,new_data.shape[0]):
-                    new_data[i,0] += 0.0001*i
-            else:
-                new_data = np.flip(np.flip(data, axis=1),axis=0)
-            spline = CubicSpline(new_data[:, 0], new_data[:, 1])
-        elif agent == 'adv':
-            if monotonic:
-                new_data = np.flip(data, axis=0)
-            else:
-                new_data = np.flip(np.flip(data, axis=1),axis=0)
-            spline = CubicSpline(new_data[:, 0], new_data[:, 1])
-        else:
-            new_data = data
-            spline = CubicSpline(new_data[:, 0], new_data[:, 1])
-
-        interpolated_points = []
-
-        # interpolate the data
-        for i in range(len(data[:, 0]) - 1):
-            x_interval = np.linspace(new_data[i, 0], new_data[i+1, 0], num_interpolations)
-            y_interval = spline(x_interval)
-            if i == len(data[:, 0]) - 1:
-                interpolated_points.extend(zip(x_interval, y_interval))
-            else:
-                interpolated_points.extend(zip(x_interval[:-1], y_interval[:-1]))
-        
-        interpolated_points = np.array(interpolated_points)
-
-        if agent == 'target':
-            if mask_values_X or mask_values_Y:
-                interpolated_points = np.flip(interpolated_points, axis=0)
-            else:
-                interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
-        elif agent == 'adv':
-            if monotonic:
-                interpolated_points = np.flip(interpolated_points, axis=0)
-            else:
-                interpolated_points = np.flip(np.flip(interpolated_points, axis=1),axis=0)
-        return interpolated_points
+    

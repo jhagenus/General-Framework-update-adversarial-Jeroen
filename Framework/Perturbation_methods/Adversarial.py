@@ -115,17 +115,17 @@ class Adversarial(perturbation_template):
 
     def initialize_settings(self):
         # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = True
+        self.plot_input = False
 
         # Spline settings
         self.total_spline_values = 100
 
         # Plot the loss over the iterations
-        self.plot_loss = True
+        self.plot_loss = False
 
         # Plot the adversarial scene
-        self.static_adv_scene = True
-        self.animated_adv_scene = True
+        self.static_adv_scene = False
+        self.animated_adv_scene = False
 
         # Setting animated scene
         self.control_action_graph = True
@@ -143,7 +143,7 @@ class Adversarial(perturbation_template):
         self.ego_agent_index = 1
 
         # Initialize parameters
-        self.num_samples = 20  # Defined as (K) in our paper
+        self.num_samples = 5  # Defined as (K) in our paper
         self.max_number_iterations = 20
 
         # absolute clamping values
@@ -159,11 +159,11 @@ class Adversarial(perturbation_template):
         self.alpha = 0.1
 
         # Randomized smoothing
-        self.smoothing = True
+        self.smoothing = False
         self.num_samples_used_smoothing = 15 # Defined as .. in paper
         self.sigma_acceleration = [0.05, 0.1]
         self.sigma_curvature = [0.01, 0.05]
-        self.plot_smoothing = True
+        self.plot_smoothing = False
         self.smoothing_method = 'control_action'   # 'position' or 'control_action'
 
         # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
@@ -171,7 +171,7 @@ class Adversarial(perturbation_template):
         self.loss_function = 'ADE'
 
         # For barrier function select: 'Log', 'Spline' or None
-        self.barrier_function = 'Spline'
+        self.barrier_function = 'Log'
 
         # Barrier function parameters
         self.distance_threshold = 1
@@ -225,10 +225,10 @@ class Adversarial(perturbation_template):
         X, X_copy, X_shape, Y, Y_copy, Y_shape, agent_order, spline_data = self.prepare_data(X, Y, agent)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
-        X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict = self.prepare_data_attack(X, Y, spline_data)
-
+        X, Y, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict = self.prepare_data_attack(X, Y, spline_data)
+ 
         # Calculate initial control actions
-        control_action, heading, velocity = Control_action.inverse_Dynamical_Model(positions_perturb=positions_perturb, dt=self.dt)
+        control_action, heading, velocity = Control_action.inverse_Dynamical_Model(positions_perturb=positions_perturb, dt=self.dt, device=self.pert_model.device)
 
         # set to device
         control_action, heading, velocity = Helper.set_device(self.pert_model.device,control_action, heading, velocity)
@@ -257,7 +257,7 @@ class Adversarial(perturbation_template):
 
             if i == 0:
                 # check conversion
-                Helper.check_conversion(adv_position, positions_perturb)
+                # Helper.check_conversion(adv_position, positions_perturb)
 
                 # Store the first prediction
                 Y_Pred_iter_1 = Y_Pred.detach()
@@ -295,6 +295,10 @@ class Adversarial(perturbation_template):
         # Split the adversarial position back to X and Y
         X_new, Y_new = Helper.return_data(adv_position, X, Y, future_action_included)
 
+        # Forward pass through the model
+        Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, Domain=Domain, img=img, img_m_per_px=img_m_per_px, 
+                                                          num_steps=num_steps_predict, num_samples=self.num_samples)
+
         # Gaussian smoothing module
         X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = self.smoothing_module(control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps_predict)
 
@@ -305,10 +309,10 @@ class Adversarial(perturbation_template):
         self.ploting_module(X,X_new,Y,Y_new,Y_Pred,Y_Pred_iter_1,spline_data,loss_store,future_action_included,control_action,perturbation,X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv)
 
         # Return Y to old shape
-        Y_new_pert = Helper.return_to_old_shape(Y_new_pert, Y_shape)
+        Y_new = Helper.return_to_old_shape(Y_new, Y_shape)
 
         # Flip dimensions back
-        X_new_pert, Y_new_pert = Helper.flip_dimensions_2(self.flip_dimensions, X_new_pert, Y_new_pert, agent_order)
+        X_new_pert, Y_new_pert = Helper.flip_dimensions_2(self.flip_dimensions, X_new, Y_new, agent_order)
 
         return X_new_pert, Y_new_pert
     
@@ -388,6 +392,8 @@ class Adversarial(perturbation_template):
         # check if the size of both sigmas are the same
         Helper.check_size_list(self.sigma_acceleration, self.sigma_curvature)
 
+        Helper.validate_settings_order(self.smoothing,self.plot_smoothing)
+
 
     def load_images(self, X, Domain):
         Img_needed = np.zeros(X.shape[:2], bool)
@@ -423,10 +429,10 @@ class Adversarial(perturbation_template):
 
     def prepare_data(self, X, Y, agent):
         # Remove nan from input and remember old shape
-        Y = Helper.remove_nan_values(data=Y)
         X_shape = X.shape
         Y_shape = Y.shape
-
+        Y = Helper.remove_nan_values(data=Y)
+        
         # Flip dimensions agents
         X, Y, agent_order = Helper.flip_dimensions(X=X, Y=Y, agent=agent, flip_dimensions=self.flip_dimensions)
 
@@ -435,11 +441,12 @@ class Adversarial(perturbation_template):
         Y_copy = Y.copy()
 
         # Create spline data
-        spline_data = Spline.spline_data(X=X, 
-                                         Y=Y,  
-                                         total_spline_values=self.total_spline_values)
+        # spline_data = Spline.spline_data(X=X, 
+        #                                  Y=Y,  
+        #                                  total_spline_values=self.total_spline_values)
+        spline_data = X
 
-        return X, X_copy, X_shape, Y, Y_copy, Y_shape, agent_order, spline_data
+        return X, X_copy, X_shape, Y, Y_copy, Y_shape, agent_order
 
     def prepare_data_attack(self, X, Y, spline_data):
         # Convert to tensor
@@ -478,7 +485,7 @@ class Adversarial(perturbation_template):
 
         '''
 
-        self.batch_size = 1
+        self.batch_size = 2
 
     def requirerments(self):
         '''

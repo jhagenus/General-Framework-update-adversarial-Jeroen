@@ -1,9 +1,10 @@
 import torch
 
+from Adversarial_classes.helper import Helper
 
 class Control_action:
     @staticmethod
-    def inverse_Dynamical_Model(positions_perturb, dt):
+    def inverse_Dynamical_Model(positions_perturb, dt, device):
         """
         Computes the control actions, heading, and velocity of agents in a perturbed positions dataset.
 
@@ -21,11 +22,15 @@ class Control_action:
         """
         # Initialize control action
         control_action = torch.zeros(
-            (positions_perturb.shape[0], positions_perturb.shape[1], positions_perturb.shape[2]-1, positions_perturb.shape[3]))
+            (positions_perturb.shape[0], positions_perturb.shape[1], positions_perturb.shape[2]-1, positions_perturb.shape[3])).to(device)
+        
+        # Compute the mask values for agents standing still
+        mask = Helper.compute_mask_values_tensor(positions_perturb)
+        mask = mask[:,:,:-1,:].to(device)
 
         # Initialize heading and velocity
-        heading = torch.zeros(positions_perturb.shape[:3])
-        velocity = torch.zeros(positions_perturb.shape[:3])
+        heading = torch.zeros(positions_perturb.shape[:3]).to(device)
+        velocity = torch.zeros(positions_perturb.shape[:3]).to(device)
 
         # update initial velocity and heading
         velocity[:, :, 0] = Control_action.compute_velocity(positions_perturb, dt, 0)
@@ -42,14 +47,18 @@ class Control_action:
         all_headings = Control_action.compute_heading(positions_perturb, time_steps)
         heading[:, :, 1:] = all_headings
 
-        # Update the acceleration control actions
-        control_action[:, :, :, 0] = (velocity[:, :, 1:] - velocity[:, :, :-1]) / dt
+        # acceleration control actions
+        acceleration_control = (velocity[:, :, 1:] - velocity[:, :, :-1]) / dt
 
         # Calculate the change of heading (yaw rate)
         yaw_rate = (heading[:, :, 1:] - heading[:, :, :-1]) / dt
 
-        # update the curvature control actions
-        control_action[:, :, :, 1] = yaw_rate / velocity[:, :, :-1]
+        # curvature control actions
+        curvature_control = yaw_rate / velocity[:, :, :-1]
+
+        # Update the control actions
+        control_action[:, :, :, 0] = torch.where(~mask[:,:,:,0], acceleration_control, control_action[:, :, :, 0])
+        control_action[:, :, :, 1] = torch.where(~mask[:,:,:,1], curvature_control, control_action[:, :, :, 1])
 
         return control_action, heading, velocity
 

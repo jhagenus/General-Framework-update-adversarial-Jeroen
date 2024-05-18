@@ -97,7 +97,7 @@ class perturbation_template():
             samples = np.arange(i_start, i_end)
             
 
-            if N_O_sort[samples].min() not in [14]:
+            if N_O_sort[samples].min() not in [18]:
                 continue
             
             X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples])

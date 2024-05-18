@@ -58,7 +58,7 @@ class Plot:
             for index_agent in range(X.shape[1]):
                 if plot_input:
                     # Plot spline data
-                    ax.plot(spline_data[index_batch,index_agent,:,0], spline_data[index_batch,index_agent,:,1], marker='o', color='m', label='Spline data',markersize=6,alpha=0.2)
+                    # ax.plot(spline_data[index_batch,index_agent,:,0], spline_data[index_batch,index_agent,:,1], marker='o', color='m', label='Spline data',markersize=6,alpha=0.2)
 
                     # Plot ego and tar data
                     self.plot_ego_and_tar_agent(X=X,X_new=None,Y=Y,Y_new=None,Y_Pred=None,Y_Pred_iter_1=None,figure_input=ax,index_batch=index_batch,index_agent=index_agent,future_action=False,style='nominal')
@@ -156,7 +156,7 @@ class Plot:
 
                 # Plot 1: Plot the smoothed nominal scene
                 for index_agent in range(X.shape[1]):
-                    self.plot_ego_and_tar_agent(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,figure_input=ax,index_batch=index_batch,index_agent=index_agent,future_action=self.future_action,style='perturbed')
+                    self.plot_ego_and_tar_agent(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,figure_input=ax,index_batch=index_batch,index_agent=index_agent,future_action=self.future_action,style='unperturbed')
 
                 self.plot_smoothed_data(X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv,index_sigma=index_sigma,index_batch=index_batch,style='unperturbed',figure_input=ax)
                 
@@ -165,7 +165,7 @@ class Plot:
 
                 # Plot 2: Plot the smoothed adversarial scene
                 for index_agent in range(X.shape[1]):
-                    self.plot_ego_and_tar_agent(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,figure_input=ax1,index_batch=index_batch,index_agent=index_agent,future_action=self.future_action,style='unperturbed')
+                    self.plot_ego_and_tar_agent(X=X,X_new=X_new,Y=Y,Y_new=Y_new,Y_Pred=Y_Pred,Y_Pred_iter_1=Y_Pred_iter_1,figure_input=ax1,index_batch=index_batch,index_agent=index_agent,future_action=self.future_action,style='perturbed')
 
                 self.plot_smoothed_data(X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv,index_sigma=index_sigma,index_batch=index_batch,style='perturbed',figure_input=ax1)
                 # setting for plot nominal scene
@@ -329,13 +329,13 @@ class Plot:
 
     def update(self,num,num_count, tar_agent_control_actions, adv_agent_control_actions,index_batch):
         # Update the location of the car
-        self.update_box_position([self.interpolated_data_pred_iter_1[index_batch,self.tar_agent,:,:]],self.rectangles_tar_pred, self.car_length, self.car_width,num)
-        self.update_box_position([self.interpolated_data_tar_agent[index_batch,self.tar_agent,:,:]],self.rectangles_tar, self.car_length, self.car_width,num)
-        self.update_box_position([self.interpolated_data_adv_Pred[index_batch,self.tar_agent,:,:]],self.rectangles_tar_adv, self.car_length, self.car_width,num) 
-        self.update_box_position([self.interpolated_data_ego_agent[index_batch,self.tar_agent,:,:]],self.rectangles_ego, self.car_length, self.car_width,num)
+        self.update_box_position([self.interpolated_data_pred_iter_1[0,self.tar_agent,:,:]],self.rectangles_tar_pred, self.car_length, self.car_width,num)
+        self.update_box_position([self.interpolated_data_tar_agent[0,self.tar_agent,:,:]],self.rectangles_tar, self.car_length, self.car_width,num)
+        self.update_box_position([self.interpolated_data_adv_Pred[0,self.tar_agent,:,:]],self.rectangles_tar_adv, self.car_length, self.car_width,num) 
+        self.update_box_position([self.interpolated_data_ego_agent[0,self.tar_agent,:,:]],self.rectangles_ego, self.car_length, self.car_width,num)
 
         if self.future_action:
-            self.update_box_position([self.interpolated_data_adv_agent[index_batch,self.tar_agent,:,:]],self.rectangles_tar_adv_future, self.car_length, self.car_width,num)
+            self.update_box_position([self.interpolated_data_adv_agent[0,self.tar_agent,:,:]],self.rectangles_tar_adv_future, self.car_length, self.car_width,num)
 
         if self.control_action_graph:
             # Update the control action in animation acceleration

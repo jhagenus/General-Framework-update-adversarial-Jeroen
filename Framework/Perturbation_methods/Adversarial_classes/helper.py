@@ -133,32 +133,48 @@ class Helper:
         
         return X_new_pert, Y_new_pert
 
+
     @staticmethod
-    def masked_data(X, Y):
-        # JULIAN: Top be more consistent, try to call this function after the flipping, so we can use 0 as the agent index instead here
-        # Check the edge case scenario where the vehicle is standing still, by checking if the first and last position are within 0.2 meters
-        # mask_values_X = np.abs(X[:,1,0,0]-X[:,1,-1,0]) < 0.2
-        # mask_values_Y = np.abs(Y[:,1,0,1]-Y[:,1,-1,1]) < 0.2
+    def compute_mask_values_standing_still(array):
+        """
+        Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2.
 
-        mask_values_X = np.abs(X[:,:,0,:]-X[:,:,-1,:]) < 0.2
-        mask_values_Y = np.abs(Y[:,:,0,:]-Y[:,:,-1,:]) < 0.2
+        Parameters:
+        array (numpy.ndarray): The input array to be checked.
 
-        return mask_values_X, mask_values_Y
-    
-    # @staticmethod
-    # def compute_mask_values(tensor):
-    #     mask = np.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 0.2
-    #     # Broadcast mask to match the shape of the input tensor
-    #     return np.broadcast_to(mask[:, :, np.newaxis, :], tensor.shape)
+        Returns:
+        numpy.ndarray: The mask array with True where the condition is met and broadcasted to match the input shape.
+        """
+        # Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
+        mask = np.abs(array[:, :, 0, :] - array[:, :, -1, :]) < 0.2
+        # Broadcast the mask to match the shape of the input tensor
+        mask = np.expand_dims(mask, axis=2)
+        mask = np.broadcast_to(mask, array.shape)
+
+        # Create a mask of the same shape with all False
+        mask_clone = mask.copy()
+        mask_clone[:, :, :, 0] = True
+
+        return mask_clone
     
     @staticmethod
     def compute_mask_values_tensor(tensor):
+        """
+        Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
+        for a PyTorch tensor.
+
+        Parameters:
+        tensor (torch.Tensor): The input tensor to be checked.
+
+        Returns:
+        torch.Tensor: The mask tensor with the condition applied and broadcasted to match the input shape.
+        """
         # Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
         mask = torch.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 0.2
         # Broadcast the mask to match the shape of the input tensor
         mask = mask[:, :, None, :].expand_as(tensor)
 
-        # Identify columns that are all true or all false in the last dimension
+        # # Identify columns that are all true or all false in the last dimension
         all_true = mask.all(dim=-2)
 
         # Identify where one element is True and the other is False in the last dimension
@@ -168,7 +184,7 @@ class Helper:
     
         mask_clone[condition,:] = False
         
-        return mask_clone
+        return mask
     
     @staticmethod
     def flip_dimensions(X, Y, agent, flip_dimensions):
@@ -207,40 +223,6 @@ class Helper:
         Y = Y[:, agent_order, :, :]
 
         return X, Y, agent_order
-    
-    @staticmethod
-    def find_limits_data(X, Y, index):
-        min_value_x = np.inf
-        max_value_x = -np.inf
-        min_value_y = np.inf
-        max_value_y = -np.inf
-
-        # JULIAN: Why not use np.min and np.max directly on the concatenated array of X and Y?
-
-        # Find plot limits
-        for j in range(X.shape[1]):
-            min_value_x = min(min_value_x, np.min(X[index,j,:,0]))
-            min_value_x = min(min_value_x, np.min(Y[index,j,:,0]))
-
-            max_value_x = max(max_value_x, np.max(X[index,j,:,0]))
-            max_value_x = max(max_value_x, np.max(Y[index,j,:,0]))
-
-            min_value_y = min(min_value_y, np.min(X[index,j,:,1]))
-            min_value_y = min(min_value_y, np.min(Y[index,j,:,1]))
-
-            max_value_y = max(max_value_y, np.max(X[index,j,:,1]))
-            max_value_y = max(max_value_y, np.max(Y[index,j,:,1]))
-
-        return min_value_x, max_value_x, min_value_y, max_value_y
-    
-    # @staticmethod
-    # def convert_to_tensor(X, Y, spline_data,device):
-    #     # Convert all inputs to tensors
-    #     X = Helper.to_cuda_tensor(X,device)
-    #     Y = Helper.to_cuda_tensor(Y,device)
-    #     spline_data = Helper.to_cuda_tensor(spline_data,device)
-        
-    #     return X, Y, spline_data
     
     @staticmethod
     def convert_to_tensor(device, *args):
@@ -348,16 +330,6 @@ class Helper:
         """
         assert len(list_1) == len(list_2), "The two lists must have the same size."
     
-    # @staticmethod
-    # def is_monotonic(data):
-    #     # JULIAN: I am pretty sure something like this already exists in numpy, but I am not sure about the exact name
-    #     # Check for monotonic increasing
-    #     is_increasing = np.all(data[:-1,0] <= data[1:,0])
-    #     # Check for monotonic decreasing
-    #     is_decreasing = np.all(data[:-1,0] >= data[1:,0])
-
-    #     return is_increasing or is_decreasing
-    
     @staticmethod
     def is_monotonic(data):
         """
@@ -376,6 +348,8 @@ class Helper:
         
         # Combine the results to get the final monotonicity status for each sub-array in dim 1
         return np.logical_or(is_increasing, is_decreasing)
+    
+    
 
     @staticmethod
     def is_increasing(data):
