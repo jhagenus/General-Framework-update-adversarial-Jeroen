@@ -58,7 +58,7 @@ class Plot:
             for index_agent in range(X.shape[1]):
                 if plot_input:
                     # Plot spline data
-                    # ax.plot(spline_data[index_batch,index_agent,:,0], spline_data[index_batch,index_agent,:,1], marker='o', color='m', label='Spline data',markersize=6,alpha=0.2)
+                    ax.plot(spline_data[index_batch,index_agent,:,0], spline_data[index_batch,index_agent,:,1], marker='o', color='m', label='Spline data',markersize=6,alpha=0.2)
 
                     # Plot ego and tar data
                     self.plot_ego_and_tar_agent(X=X,X_new=None,Y=Y,Y_new=None,Y_Pred=None,Y_Pred_iter_1=None,figure_input=ax,index_batch=index_batch,index_agent=index_agent,future_action=False,style='nominal')

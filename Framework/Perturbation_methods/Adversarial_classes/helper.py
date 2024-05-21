@@ -378,7 +378,7 @@ class Helper:
         return np.all(data[:, :, :-1, 0] >= data[:, :, 1:, 0], axis=-1)
     
     @staticmethod
-    def return_data(adv_position, X, Y, future_action):
+    def return_data(adv_position, X_shape, Y_shape, future_action):
         """
         Splits or assigns the adversarial position data based on whether future action is included.
 
@@ -394,7 +394,7 @@ class Helper:
                    - Y_new (torch.Tensor): The updated adversarial Y tensor.
         """
         if future_action:
-            X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=-2)
+            X_new, Y_new = torch.split(adv_position, [X_shape[2], Y_shape[2]], dim=-2)
         else: 
             X_new = adv_position
             Y_new = Y

@@ -5,7 +5,7 @@ from Adversarial_classes.helper import Helper
 
 class Spline:
     @staticmethod
-    def spline_data(X, Y, total_spline_values,figure):
+    def spline_data(X, Y, total_spline_values):
         """
         Process data with cubic spline interpolation after checking monotonicity and increasing order,
         ensuring x-values are increasing by adding small increments where necessary.
