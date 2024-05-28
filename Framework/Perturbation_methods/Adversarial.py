@@ -153,6 +153,13 @@ class Adversarial(perturbation_template):
         self.flip_dimensions = True
 
         # Select which agent in datasets to attack
+        # JULIAN: flip_dimensions() in helper.py suggests that this is must be the case.
+        # JULIAN: So maybe not make this seems as something you can easily change, especially not make
+        # JULIAN: This a parameter in the functions that you pass this to
+        # JULIAN: Instead, if you want to use this varaible, pass self (i.e., Adversarial) to the function, and then
+        # JULIAN: then use Adversarial.tar_agent_index and Adversarial.ego_agent_index in those functions
+        # JULIAN: This has the added benefit ofg reducing the number of function parameters, which should always
+        # JULIAN: be a goal when designing a function
         self.tar_agent_index = 0
         self.ego_agent_index = 1
 
@@ -184,7 +191,7 @@ class Adversarial(perturbation_template):
         self.loss_function = 'Fake_collision_GT'
 
         # For barrier function select: 'Log', 'Spline' or None
-        self.barrier_function = 'Log'
+        self.barrier_function = 'Spline'
 
         # Barrier function parameters
         self.distance_threshold = 1
@@ -466,6 +473,9 @@ class Adversarial(perturbation_template):
         # spline_data = Spline.spline_data(X=X, 
         #                                  Y=Y,  
         #                                  total_spline_values=self.total_spline_values)
+
+        # JULIAN: If you do this, it would be much better to just not create the spline_data varaible at all,
+        # JULIAN: and instead use X.
         spline_data = X
 
         return X, X_copy, X_shape, Y, Y_copy, Y_shape, Y_shape_new, agent_order, spline_data

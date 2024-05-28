@@ -206,15 +206,26 @@ class Loss:
         """
         # Calculate the distance between the adversarial observed states and spline data
         distance = torch.cdist(X_new[:,tar_agent,:,:], spline_data[:,tar_agent,:,:], p=2)
-        min_indices = torch.argmin(distance, dim=-1)
+        X_tar = X_new[:,tar_agent,:,:].unsqueeze(1).unsqueeze(1)
+        # Define lines out pf the spline data
+        spline_lines = torch.stack([spline_data[:,tar_agent,1:], spline_data[:,tar_agent,:-1]], dim=-3).unsqueeze(-2)
 
-        # Expand min_indices to match the shape required for gather
-        expanded_min_indices = min_indices.unsqueeze(-1).expand(-1, -1, spline_data.size(-1))
-        closest_points = torch.gather(spline_data[:,tar_agent,:,:], 1, expanded_min_indices)
+
+
+        # Get distance to line points
+        distance_line_points = (X_tar - spline_lines).norm(dim=-1)
+        distance_line_lower_bound = torch.min(distance_line_points, dim=1).values
+
+        # Get distance to unbounded spline lines segments
+        D1 = spline_lines[:,1] - spline_lines[:,0]
+        D2 = X_tar[:,0] - spline_lines[:,0]
+        D_cross = D1[...,0] * D2[...,1] - D1[...,1] * D2[...,0]
+        distance_line = D_cross / (D1.norm(dim=-1) + 1e-6)
+
+        distance = torch.maximum(distance_line, distance_line_lower_bound).min(dim = -2).values
 
         # calculate the barrier function
-        barrier_norm = torch.norm(X_new[:,tar_agent,:,:] - closest_points, dim=-1)
-        barrier_log = torch.log(distance_threshold - barrier_norm)
+        barrier_log = torch.log(distance_threshold - distance)
         barrier_log_new = barrier_log / torch.log(torch.tensor(log_value))
         return torch.mean(barrier_log_new, dim=-1)
 
