@@ -31,8 +31,7 @@ class Adversarial(perturbation_template):
         None.
 
         '''
-        assert 'data_set_dict' in kwargs.keys(
-        ), "Adverserial model dataset is missing (required key: 'data_set_dict')."
+        assert 'data_set_dict' in kwargs.keys(), "Adverserial model dataset is missing (required key: 'data_set_dict')."
         assert 'data_param' in kwargs.keys(
         ), "Adverserial model data param is missing (required key: 'data_param')."
         assert 'splitter_dict' in kwargs.keys(
@@ -67,15 +66,30 @@ class Adversarial(perturbation_template):
 
         # Exctract splitting method parameters
         pert_splitter_name = kwargs['splitter_dict']['Type']
-        pert_splitter_rep = [kwargs['splitter_dict']['repetition']]
-        pert_splitter_tp = kwargs['splitter_dict']['test_part']
+        if 'repetition' in kwargs['splitter_dict'].keys():
+            pert_splitter_rep = [kwargs['splitter_dict']['repetition']]
+        else:
+            pert_splitter_rep =  [(0,)]
+        if 'test_part' in kwargs['splitter_dict'].keys():
+            pert_splitter_tp = kwargs['splitter_dict']['test_part']
+        else:
+            pert_splitter_tp = 0.2
+        
+        if 'train_pert' in kwargs['splitter_dict'].keys():
+            pert_splitter_train_pert = kwargs['splitter_dict']['train_pert']
+        else:
+            pert_splitter_train_pert = False
+        if 'test_pert' in kwargs['splitter_dict'].keys():
+            pert_splitter_test_pert = kwargs['splitter_dict']['test_pert']
+        else:
+            pert_splitter_test_pert = False
 
         pert_splitter_module = importlib.import_module(pert_splitter_name)
         pert_splitter_class = getattr(pert_splitter_module, pert_splitter_name)
 
         # Initialize and apply Splitting method
         pert_splitter = pert_splitter_class(
-            pert_data_set, pert_splitter_tp, pert_splitter_rep)
+            pert_data_set, pert_splitter_tp, pert_splitter_rep, pert_splitter_train_pert, pert_splitter_test_pert)
         pert_splitter.split_data()
 
         # Extract per model dict
@@ -115,20 +129,20 @@ class Adversarial(perturbation_template):
 
     def initialize_settings(self):
         # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = True
+        self.plot_input = False
 
         # Spline settings
         self.total_spline_values = 100
 
         # Plot the loss over the iterations
-        self.plot_loss = True
+        self.plot_loss = False
 
         # Plot the adversarial scene
-        self.static_adv_scene = True
-        self.animated_adv_scene = True
+        self.static_adv_scene = False
+        self.animated_adv_scene = False
 
         # Setting animated scene
-        self.control_action_graph = True
+        self.control_action_graph = False
 
         # Car size
         self.car_length = 4.1
@@ -144,7 +158,7 @@ class Adversarial(perturbation_template):
 
         # Initialize parameters
         self.num_samples = 5  # Defined as (K) in our paper
-        self.max_number_iterations = 20
+        self.max_number_iterations = 5
 
         # absolute clamping values
         self.epsilon_acc_absolute = 6
@@ -156,14 +170,14 @@ class Adversarial(perturbation_template):
 
         # Learning decay
         self.gamma = 1
-        self.alpha = 0.1
+        self.alpha = 0.001
 
         # Randomized smoothing
-        self.smoothing = True
+        self.smoothing = False
         self.num_samples_used_smoothing = 15 # Defined as .. in paper
         self.sigma_acceleration = [0.05, 0.1]
         self.sigma_curvature = [0.01, 0.05]
-        self.plot_smoothing = True
+        self.plot_smoothing = False
 
         # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
         # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
@@ -224,8 +238,11 @@ class Adversarial(perturbation_template):
         X, X_copy, X_shape, Y, Y_copy, Y_shape, Y_shape_new, agent_order, spline_data = self.prepare_data(X, Y, agent)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
-        X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict = self.prepare_data_attack(X, Y, spline_data)
+        X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict, indices_to_remove, data_filtered = self.prepare_data_attack(X, Y, spline_data)
  
+        if data_filtered == None:
+            X, Y =  Helper.detach_tensor(X,Y)
+            return X, Y 
         # Calculate initial control actions
         control_action, heading, velocity = Control_action.inverse_Dynamical_Model(positions_perturb=positions_perturb, dt=self.dt, device=self.pert_model.device)
 
@@ -248,7 +265,7 @@ class Adversarial(perturbation_template):
             adv_position = Control_action.dynamical_model(control_action + perturbation, positions_perturb, heading, velocity, self.dt)
 
             # Split the adversarial position back to X and Y
-            X_new, Y_new = Helper.return_data(adv_position, X_shape, Y_shape_new, future_action_included)
+            X_new, Y_new = Helper.return_data(adv_position, X, Y, future_action_included)
 
             # Forward pass through the model
             Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, Domain=Domain, img=img, img_m_per_px=img_m_per_px, 
@@ -271,6 +288,8 @@ class Adversarial(perturbation_template):
             losses.sum().backward()
             grad = perturbation.grad
 
+            # while 
+
             # Update Control inputs
             with torch.no_grad():
                 perturbation.subtract_(grad, alpha=self.alpha)
@@ -292,14 +311,14 @@ class Adversarial(perturbation_template):
         adv_position = Control_action.dynamical_model(control_action + perturbation, positions_perturb, heading, velocity, self.dt)
 
         # Split the adversarial position back to X and Y
-        X_new, Y_new = Helper.return_data(adv_position, X_shape, Y_shape_new, future_action_included)
+        X_new, Y_new = Helper.return_data(adv_position, X, Y, future_action_included)
 
         # Forward pass through the model
         Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, Domain=Domain, img=img, img_m_per_px=img_m_per_px, 
                                                           num_steps=num_steps_predict, num_samples=self.num_samples)
 
         # Gaussian smoothing module
-        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = self.smoothing_module(control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps_predict, X_shape, Y_shape_new,future_action_included)
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = self.smoothing_module(control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps_predict, X, Y,future_action_included)
 
         # Detach the tensor and convert to numpy
         X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data = Helper.detach_tensor(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data)
@@ -359,7 +378,7 @@ class Adversarial(perturbation_template):
         
         return losses
     
-    def smoothing_module(self, control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps, X_shape, Y_shape_new,future_action_included):
+    def smoothing_module(self, control_action, perturbation, adv_position, velocity, heading, T, Domain, img, img_m_per_px, num_steps, X, Y,future_action_included):
         #initialize smoothing
         smoothing = Smoothing(control_action=control_action, 
                               control_action_perturbed= control_action+perturbation,
@@ -381,8 +400,8 @@ class Adversarial(perturbation_template):
                               img=img,
                               img_m_per_px=img_m_per_px,
                               num_steps=num_steps,
-                              X_shape = X_shape,
-                              Y_shape = Y_shape_new,
+                              X = X,
+                              Y = Y,
                               future_action = future_action_included)
         
         # Randomized smoothing
@@ -459,6 +478,10 @@ class Adversarial(perturbation_template):
         positions_perturb, future_action_included = Helper.create_data_to_perturb(X=X, Y=Y, loss_function=self.loss_function)
 
         mask_data = Helper.compute_mask_values_tensor(positions_perturb)
+        
+        indices_to_remove, data_filtered = self.remove_indices(positions_perturb,mask_data)
+
+        # new_data = self.add_back_indices(positions_perturb, data_filtered, indices_to_remove)
 
         # Load images for adversarial attack
         # img, img_m_per_px = self.load_images(X,Domain)
@@ -474,7 +497,35 @@ class Adversarial(perturbation_template):
         # number of steps to predict
         num_steps_predict = Y.shape[2]
 
-        return X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict
+        return X, Y, spline_data, positions_perturb, future_action_included, mask_data, img, img_m_per_px, Y_Pred_iter_1, num_steps_predict, indices_to_remove, data_filtered
+    
+    def remove_indices(self,data,mask):
+        # Identify indices to remove
+        indices_to_remove = []
+        for i in range(data.shape[0]):
+            if torch.all(mask[i, 0, :, :] == True):
+                indices_to_remove.append(i)
+
+        if len(indices_to_remove) == data.shape[0]:
+            data_filtered = None
+        elif len(indices_to_remove) == data.shape[0]-1:
+            data_filtered = data[indices_to_remove[0]:indices_to_remove[0]+1]
+        else:
+            data_filtered = torch.cat([data[i:i+1] for i in range(data.shape[0]) if i not in indices_to_remove], dim=0)
+
+        return indices_to_remove, data_filtered
+    
+    def add_back_indices(self, data_old, data_new, indices_to_remove):
+        new_data = torch.zeros_like(data_old)
+        j = 0
+        for i in range(data_old.shape[0]):
+            if i in indices_to_remove:
+                new_data[i] = data_old[i:i+1]
+            else:
+                new_data[i] = data_new[j:j+1]
+                j += 1
+        return new_data
+
 
     def set_batch_size(self):
         '''

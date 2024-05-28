@@ -8,14 +8,15 @@ new_experiment = Experiment(Experiment_name)
 
 #%% Select modules
 # Select the datasets
-Data_sets = [{'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': [], 'perturbation': {'attack': 'Adversarial',
+Data_sets = [[{'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': [], 'perturbation': {'attack': 'Adversarial',
                                                                                                                                         'data_set_dict': {'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': []},
                                                                                                                                         'data_param': {'dt': 0.1, 'num_timesteps_in': (12,12), 'num_timesteps_out': (12, 12)},
-                                                                                                                                        'splitter_dict': {'Type': 'Random_split', 'repetition': [0], 'test_part': 0.2},
-                                                                                                                                        'model_dict': {'model': 'trajectron_salzmann_old_copy','kwargs': {'seed':0}}}}]
+                                                                                                                                        'splitter_dict': {'Type': 'no_split', 'repetition': [0], 'test_part': 0.2},
+                                                                                                                                        'model_dict': {'model': 'trajectron_salzmann_old_copy','kwargs': {'seed':0}}}},
+                                                                                            {'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': []}]]
 
 # Select the spitting methods to be considered
-Splitters = [{'Type': 'Random_split', 'repetition': [0], 'test_part': 0.2}]
+Splitters = [{'Type': 'perturb_split', 'repetition': [0], 'test_part': 0.2, 'train_pert': False, 'test_pert': True}]
 
 # Select the models to be trained
 Models = [{'model': 'trajectron_salzmann_old',
@@ -75,12 +76,12 @@ new_experiment.set_parameters(model_for_path_transform, num_samples_path_pred,
 
 
 #%% Run experiment
-new_experiment.run() 
+new_experiment.run()
 
 # Load results
 Results, Train_Loss = new_experiment.load_results(plot_if_possible = True, return_train_loss = True)
 
-new_experiment.write_tables(dataset_row = True, use_scriptsize = False, depict_std = True)
+# new_experiment.write_tables(dataset_row = True, use_scriptsize = False, depict_std = True)
 
-new_experiment.plot_paths(load_all = False, plot_similar_futures = False, plot_train = False,
-                          only_show_pred_agents = False, likelihood_visualization = False, plot_only_lines = False)
+# new_experiment.plot_paths(load_all = False, plot_similar_futures = False, plot_train = False,
+#                           only_show_pred_agents = False, likelihood_visualization = False, plot_only_lines = False)

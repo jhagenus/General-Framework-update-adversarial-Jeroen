@@ -4,7 +4,7 @@ import os
 
 
 class splitting_template():
-    def __init__(self, data_set, test_part = 0.2, repetition = (0)):
+    def __init__(self, data_set, test_part = 0.2, repetition = (0), train_pert = False, test_pert = False):
         # Save data_set location
         self.data_set = data_set
         if self.data_set is not None:
@@ -43,6 +43,14 @@ class splitting_template():
             
         self.repetition = np.unique(self.repetition).astype(int)
         self.repetition = list(self.repetition[self.repetition < max_rep])
+
+        # Check for pertubation if they exist
+        if train_pert or test_pert:
+            if not 'Unperturbed_input' in self.Domain.columns:
+                raise AttributeError('The domain does not contain the unperturbed input data.')
+            
+        self.train_pert = train_pert
+        self.test_pert = test_pert
        
     def split_data(self):
         self.split_file = self.data_set.change_result_directory(self.data_set.data_file, 'Splitting', 
@@ -68,11 +76,44 @@ class splitting_template():
             
             os.makedirs(os.path.dirname(self.split_file), exist_ok=True)
             np.save(self.split_file, save_data)
+
+            if 'Unperturbed_input' in self.Domain.columns:
+                unperturbed = self.Domain['Unperturbed_input'].isnull().to_numpy()
+
+                # Overwrite perturbed data with unperturbed data if necessary
+                if not self.train_pert:
+                    # get indices with perturb
+                    perturbed_train_index = self.Train_index[~unperturbed[self.Train_index]]
+                    Train_unperturbed_input = self.Domain['Unperturbed_input'].iloc[perturbed_train_index]
+                    Train_list_input = [train[0] for train in Train_unperturbed_input.to_list()]
+                    Train_unperturbed_input = pd.DataFrame(Train_list_input, index = Train_unperturbed_input.index)
+
+                    Train_unperturbed_output = self.Domain['Unperturbed_output'].iloc[perturbed_train_index]
+                    Train_list_output = [train[0] for train in Train_unperturbed_output.to_list()]
+                    Train_unperturbed_output = pd.DataFrame(Train_list_output, index = Train_unperturbed_output.index)
+
+                    self.data_set.Input_path.iloc[perturbed_train_index] = Train_unperturbed_input
+                    self.data_set.Output_path.iloc[perturbed_train_index] = Train_unperturbed_output
+                
+                if not self.test_pert:
+                    # get indices with perturb
+                    perturbed_test_index = self.Test_index[~unperturbed[self.Test_index]] 
+                    Test_unperturbed_input = self.Domain['Unperturbed_input'].iloc[perturbed_test_index]
+                    Test_list_input = [test[0] for test in Test_unperturbed_input.to_list()]
+                    Test_unperturbed_input = pd.DataFrame(Test_list_input, index = Test_unperturbed_input.index)
+
+                    Test_unperturbed_output = self.Domain['Unperturbed_output'].iloc[perturbed_test_index]
+                    Test_list_output = [test[0] for test in Test_unperturbed_output.to_list()]
+                    Test_unperturbed_output = pd.DataFrame(Test_list_output, index = Test_unperturbed_output.index)
+
+                    self.data_set.Input_path.iloc[perturbed_test_index] = Test_unperturbed_input 
+                    self.data_set.Output_path.iloc[perturbed_test_index] = Test_unperturbed_output
+
     
     def get_rep_str(self):
         dig = len(str(self.max_max_rep - 1))
         rep_str = '_'.join([str(rep).zfill(dig) for rep in self.repetition])
-        
+        rep_str += '_pert=' + str(int(self.train_pert)) + str(int(self.test_pert))
         return '_' + rep_str
 
     def check_splitability(self):            

@@ -9,7 +9,7 @@ from Adversarial_classes.helper import Helper
 class Smoothing:
     def __init__(self, control_action, control_action_perturbed,adv_position,velocity,heading,dt,tar_agent,num_samples_smoothing,sigma_acceleration,sigma_curvature,
                  epsilon_acc_absolute,epsilon_curv_absolute,epsilon_acc_relative,epsilon_curv_relative,
-                 pert_model,Domain,T,img,img_m_per_px,num_steps,X_shape,Y_shape,future_action):
+                 pert_model,Domain,T,img,img_m_per_px,num_steps,X,Y,future_action):
         
         # control action
         self.control_action = control_action
@@ -23,8 +23,8 @@ class Smoothing:
         self.heading = heading
 
         # shapes of data
-        self.X_shape = X_shape
-        self.Y_shape = Y_shape
+        self.X = X
+        self.Y = Y
         self.future_action = future_action
 
         # time step
@@ -175,7 +175,7 @@ class Smoothing:
         # compute the smoothed data given the noised control actions
         data_noised = Control_action.dynamical_model(control_action_noise_data, self.data, self.heading, self.velocity, self.dt)
 
-        data_noised,_ = Helper.return_data(data_noised, self.X_shape, self.Y_shape, self.future_action)
+        data_noised,_ = Helper.return_data(data_noised, self.X, self.Y, self.future_action)
 
         return data_noised
 

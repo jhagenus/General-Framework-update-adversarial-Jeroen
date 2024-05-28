@@ -114,8 +114,11 @@ class perturbation_template():
         # Write the unperturbed data into new columns in domain and overwrite Input_path and Output_path with the perturbed data
         for i_sample, i_index in enumerate(Input_path.index):
             # Save the unperturbed data
-            Domain.loc[i_index, ['Unperturbed_input']]  = Input_path.loc[i_index].copy()
-            Domain.loc[i_index, ['Unperturbed_output']] = Output_path.loc[i_index].copy()
+            input_i = Input_path.loc[i_index].copy()
+            output_i = Output_path.loc[i_index].copy()
+
+            Domain.Unperturbed_input.loc[i_index] = [input_i]
+            Domain.Unperturbed_output.loc[i_index] = [output_i]
 
             # Overwrite data with
             for i_agent, agent in enumerate(Agents):

@@ -170,7 +170,7 @@ class Helper:
         torch.Tensor: The mask tensor with the condition applied and broadcasted to match the input shape.
         """
         # Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
-        mask = torch.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 0.2
+        mask = torch.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 5
         # Broadcast the mask to match the shape of the input tensor
         mask = mask[:, :, None, :].expand_as(tensor)
 
@@ -184,7 +184,7 @@ class Helper:
     
         mask_clone[condition,:] = False
         
-        return mask
+        return mask_clone
     
     @staticmethod
     def flip_dimensions(X, Y, agent, flip_dimensions):
@@ -378,7 +378,7 @@ class Helper:
         return np.all(data[:, :, :-1, 0] >= data[:, :, 1:, 0], axis=-1)
     
     @staticmethod
-    def return_data(adv_position, X_shape, Y_shape, future_action):
+    def return_data(adv_position, X, Y, future_action):
         """
         Splits or assigns the adversarial position data based on whether future action is included.
 
@@ -394,7 +394,7 @@ class Helper:
                    - Y_new (torch.Tensor): The updated adversarial Y tensor.
         """
         if future_action:
-            X_new, Y_new = torch.split(adv_position, [X_shape[2], Y_shape[2]], dim=-2)
+            X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=-2)
         else: 
             X_new = adv_position
             Y_new = Y

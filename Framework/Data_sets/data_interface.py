@@ -5,14 +5,13 @@ import os
 import warnings
 import networkx as nx
 
-from Prob_function import OPTICS_GMM
-
+from rome.ROME import ROME
 
 class data_interface(object):
     def __init__(self, data_set_dict, parameters):
         # Initialize path
         self.path = os.sep.join(os.path.dirname(os.path.realpath(__file__)).split(os.sep)[:-1])
-
+        
         # Borrow dataset paprameters
         self.model_class_to_path       = parameters[0]
         self.num_samples_path_pred     = parameters[1]
@@ -51,9 +50,6 @@ class data_interface(object):
                 
                 # Get perturbation type
                 pert_name = perturbation['attack']
-
-                # Remove attack from dictionary
-                perturbation.pop('attack')
 
 
                 pert_module = importlib.import_module(pert_name)
@@ -95,7 +91,15 @@ class data_interface(object):
                 latex_name = latex_name[6:-1]
                 
             self.Latex_names.append(latex_name) 
-            self.Datasets[data_set.get_name()['print']] = data_set
+
+            data_set_name = data_set.get_name()['print']
+            if data_set.is_perturbed:
+                # Get perturbation index from filename
+                file_name = data_set.data_params_to_string(0.1, 10, 10)
+                pert_index = int(file_name.split('_')[-1].split('.')[0])
+                data_set_name += ' (Perturbed ' + str(pert_index) + ')'
+
+            self.Datasets[data_set_name] = data_set
             
         self.single_dataset = len(self.Datasets.keys()) <= 1    
         
@@ -213,47 +217,80 @@ class data_interface(object):
     
     def set_data_file(self, dt, num_timesteps_in, num_timesteps_out):
         (self.num_timesteps_in_real, 
-         self.num_timesteps_in_need)  = self.determine_required_timesteps(num_timesteps_in)
+        self.num_timesteps_in_need)  = self.determine_required_timesteps(num_timesteps_in)
         (self.num_timesteps_out_real, 
-         self.num_timesteps_out_need) = self.determine_required_timesteps(num_timesteps_out)
-        
-        t0_type_name_addon = '_'
-        if self.enforce_prediction_time:
-            t0_type_name_addon += 's' # s for severe
+        self.num_timesteps_out_need) = self.determine_required_timesteps(num_timesteps_out)
+        if self.single_dataset:
+            self.data_file = list(self.Datasets.values())[0].data_params_to_string(dt, num_timesteps_in, num_timesteps_out)
         else:
-            t0_type_name_addon += 'l' # l for lax
+            # Get data_file from every constituent dataset
+            self.data_file = (list(self.Datasets.values())[0].path + os.sep + 
+                              'Results' + os.sep +
+                              self.get_name()['print'] + os.sep +
+                              'Data' + os.sep + self.get_name()['file'])
+
+            Data_files = []
+            max_len = 0
+            for data_set in self.Datasets.values():
+                data_file = data_set.data_params_to_string(dt, num_timesteps_in, num_timesteps_out)
+                Data_files.append(data_file.split(os.sep)[-1])
+                max_len = max(max_len, len(data_file.split('--')))
             
-        if self.enforce_num_timesteps_out:
-            t0_type_name_addon += 's'
-        else:
-            t0_type_name_addon += 'l'
-        
-        if self.max_num_agents is None:
-            num = 0 
-        else:
-            num = self.max_num_agents
-        
-        if self.agents_to_predict == 'predefined':
-            pat = '0'
-        elif self.agents_to_predict == 'all':
-            pat = 'A'
-        else:
-            pat = self.agents_to_predict[0]
-        
-        
-        self.data_file = (list(self.Datasets.values())[0].path + os.sep + 'Results' + os.sep +
-                          self.get_name()['print'] + os.sep +
-                          'Data' + os.sep +
-                          self.get_name()['file'] +
-                          '--t0=' + self.t0_type_name + t0_type_name_addon +
-                          '--dt=' + '{:0.2f}'.format(max(0, min(9.99, dt))).zfill(4) +
-                          '_nI=' + str(self.num_timesteps_in_real).zfill(2) + 
-                          'm' + str(self.num_timesteps_in_need).zfill(2) +
-                          '_nO=' + str(self.num_timesteps_out_real).zfill(2) + 
-                          'm' + str(self.num_timesteps_out_need).zfill(2) +
-                          '_EC' * self.exclude_post_crit + '_IC' * (1 - self.exclude_post_crit) +
-                          '--max_' + str(num).zfill(3) + '_agents_' + pat +
-                          '.npy')
+            Data_files_array = np.zeros((len(Data_files), max_len - 1), dtype = object)
+            for i, data_file in enumerate(Data_files):
+                strs = data_file[:-4].split('--')[1:]
+                Data_files_array[i, :len(strs)] = strs
+            Data_files_array = Data_files_array.astype(str)
+            unique_parts = np.unique(Data_files_array)
+            # Check if there is '0' in the unique parts
+            if '0' in unique_parts:
+                unique_parts = unique_parts[unique_parts != '0']
+
+            # Find the parts with 't0'
+            t0_parts = unique_parts[np.array(['t0' == s[:2] for s in unique_parts])]
+
+            if len(t0_parts) == 1:
+                self.data_file += '--' + t0_parts[0]
+            else:
+                # Assert that last two letters are the same
+                assert np.all([s[-2:] == t0_parts[0][-2:] for s in t0_parts[1:]])
+
+                self.data_file += '--mixed_' + t0_parts[0][-2:]
+
+            # Find the parts with 'dt'
+            dt_parts = unique_parts[np.array(['dt' == s[:2] for s in unique_parts])]
+            assert len(dt_parts) == 1
+            self.data_file += '--' + dt_parts[0]
+
+            if 'No_extrap' in unique_parts:
+                self.data_file += '--No_Extrap'
+
+            # Look for perturbation parts
+            pert_parts = []
+            for i in range(Data_files_array.shape[0]):
+                includes_pert = False
+                for j in range(Data_files_array.shape[1]):
+                    s = Data_files_array[i][j]
+                    if 'Pertubation' == s[:11]:
+                        pert_parts.append(s)
+                        includes_pert = True
+                if not includes_pert:
+                    pert_parts.append('')
+
+            pert_parts = unique_parts[np.array(['Pertubation' == s[:11] for s in unique_parts])]
+            if not np.all(pert_parts == ''):
+                useful_pert_parts = pert_parts[pert_parts != '']
+                if len(useful_pert_parts) > 1:
+                    self.data_file += '--Perturbations_(' 
+                    for i, pert_part in enumerate(useful_pert_parts):
+                        self.data_file += pert_part[12:] 
+                        if i < len(useful_pert_parts) - 1:
+                            self.data_file += '_'
+                    self.data_file += ')'
+                elif len(useful_pert_parts) == 1:
+                    self.data_file += '--' + useful_pert_parts[0]
+            
+            self.data_file += '.npy'
     
     def get_data(self, dt, num_timesteps_in, num_timesteps_out):
         self.set_data_file(dt, num_timesteps_in, num_timesteps_out)
@@ -326,7 +363,7 @@ class data_interface(object):
         self.dt = dt
         
         # Remove useless samples
-        self._determine_pred_agents()
+        self._determine_pred_agents_uncheched()
         Num_eval_agents = self.Pred_agents_eval.sum(1)
         Num_pred_agents = self.Pred_agents_pred.sum(1)
         
@@ -352,13 +389,6 @@ class data_interface(object):
         
         self.num_behaviors = pd.Series(np.zeros(len(self.Behaviors), int), index = self.Behaviors)
         
-        # Overwrite old saved aspects
-        self.X_orig = self.X_orig[Useful_agents]
-        self.Y_orig = self.Y_orig[Useful_agents]
-        
-        self.N_O_data_orig = self.N_O_data_orig[Useful_agents]
-        self.N_O_pred_orig = self.N_O_pred_orig[Useful_agents]
-        
         self.Pred_agents_eval_all = self.Pred_agents_eval_all[Useful_agents]
         self.Pred_agents_pred_all = self.Pred_agents_pred_all[Useful_agents]
         self.Pred_agents_eval     = self.Pred_agents_eval[Useful_agents]
@@ -373,7 +403,7 @@ class data_interface(object):
         
     
     def get_Target_MeterPerPx(self, domain):
-        return self.Datasets[domain['Scenario']].Images.Target_MeterPerPx.loc[domain.image_id]
+        return self.Datasets[domain.Scenario].Images.Target_MeterPerPx.loc[domain.image_id]
     
     
     def return_batch_images(self, domain, center, rot_angle, target_width, target_height, 
@@ -546,11 +576,10 @@ class data_interface(object):
                     self.X_orig[i_sample, i_agent] = X_help[i_sample, i_agent].astype(np.float32)
                     self.Y_orig[i_sample, i_agent, :n_time] = Y_help[i_sample, i_agent][:n_time].astype(np.float32)
 
-                    
-    def _determine_pred_agents(self, pred_pov = True, eval_pov = True):
+    def _determine_pred_agents_uncheched(self, pred_pov = True, eval_pov = True):
         if not (hasattr(self, 'Pred_agents_eval_all') and hasattr(self, 'Pred_agents_pred_all')):
             Agents = np.array(self.Recorded.columns)
-            
+                
             # Get unique boolean needed agents
             needed_agents_bool = []
             for needed_agents in self.scenario_needed_agents:
@@ -566,9 +595,6 @@ class data_interface(object):
             
             # Get needed agents for all cases
             Needed_agents = needed_agents_bool[Scenario_id]
-            
-            # Get path data
-            self._extract_original_trajectories()
             
             if self.agents_to_predict == 'predefined':
                 self.Pred_agents_eval_all = Needed_agents
@@ -629,10 +655,6 @@ class data_interface(object):
                 
                 self.Pred_agents_eval_all = Pred_agents_N
                 self.Pred_agents_pred_all = Pred_agents_N | Needed_agents
-                
-            # Check if everything needed is there
-            assert not np.isnan(self.X_orig[self.Pred_agents_pred_all]).all((1,2)).any(), 'A needed agent is not given.'
-            assert not np.isnan(self.Y_orig[self.Pred_agents_pred_all]).all((1,2)).any(), 'A needed agent is not given.'
         
         if not (pred_pov and eval_pov):
             if not hasattr(self, 'Not_pov_agent'):
@@ -667,6 +689,19 @@ class data_interface(object):
             self.Pred_agents_eval = self.Pred_agents_eval_all.copy()
         else:
             self.Pred_agents_eval = self.Pred_agents_eval_all & self.Not_pov_agent
+        
+                    
+    def _determine_pred_agents(self, pred_pov = True, eval_pov = True):
+        self._determine_pred_agents_uncheched(pred_pov = pred_pov, eval_pov = eval_pov)
+
+        # Get path data
+        self._extract_original_trajectories()
+
+        # Check if everything needed is there
+        assert not np.isnan(self.X_orig[self.Pred_agents_pred_all]).all((1,2)).any(), 'A needed agent is not given.'
+        assert not np.isnan(self.Y_orig[self.Pred_agents_pred_all]).all((1,2)).any(), 'A needed agent is not given.'
+        
+        
         
     
     def _group_indentical_inputs(self, eval_pov = True):
@@ -842,7 +877,7 @@ class data_interface(object):
                 paths_true_comp = paths_true.reshape(-1, num_features)
                 
                 # Train model
-                kde = OPTICS_GMM().fit(paths_true_comp)
+                kde = ROME().fit(paths_true_comp)
                 log_prob_true = kde.score_samples(paths_true_comp)
                 
                 self.KDE_joint[subgroup][nto] = kde
@@ -909,7 +944,7 @@ class data_interface(object):
                     paths_true_agent_comp = paths_true_agent.reshape(-1, num_features)
                         
                     # Train model
-                    kde = OPTICS_GMM().fit(paths_true_agent_comp)
+                    kde = ROME().fit(paths_true_agent_comp)
                     log_prob_true_agent = kde.score_samples(paths_true_agent_comp)
                     
                     self.KDE_indep[subgroup][nto][agent] = kde
