@@ -7,15 +7,12 @@ from Adversarial_classes.helper import Helper
 
 
 class Smoothing:
-    def __init__(self, control_action, control_action_perturbed, adv_position, velocity, heading, dt, tar_agent, num_samples_smoothing, sigma_acceleration, sigma_curvature,
-                 epsilon_acc_absolute, epsilon_curv_absolute, epsilon_acc_relative, epsilon_curv_relative,
-                 pert_model, Domain, T, img, img_m_per_px, num_steps, X, Y, future_action, device):
+    def __init__(self, adversarial, control_action, control_action_perturbed, adv_position, velocity, heading, X, Y):
+        # check smoothing
+        self.smoothing = adversarial.smoothing
 
         # control action
         self.control_action = control_action
-
-        # device 
-        self.device = device
 
         # control actions perturbed
         self.control_action_perturbed = control_action_perturbed
@@ -28,37 +25,38 @@ class Smoothing:
         # shapes of data
         self.X = X
         self.Y = Y
-        self.future_action = future_action
+        self.future_action = adversarial.future_action_included
 
         # time step
-        self.dt = dt
+        self.dt = adversarial.dt
 
         # tar agent index
-        self.tar_agent = tar_agent
+        self.tar_agent = adversarial.tar_agent_index
 
         # number of samples for smoothing
-        self.num_samples_smoothing = num_samples_smoothing
+        self.num_samples_smoothing = adversarial.num_samples_used_smoothing
 
         # smoothing sigmas
-        self.sigma_acceleration = sigma_acceleration
-        self.sigma_curvature = sigma_curvature
+        self.sigma_acceleration = adversarial.sigma_acceleration
+        self.sigma_curvature = adversarial.sigma_curvature
 
         # clamping values
-        self.epsilon_acc_absolute = epsilon_acc_absolute
-        self.epsilon_curv_absolute = epsilon_curv_absolute
-        self.epsilon_acc_relative = epsilon_acc_relative
-        self.epsilon_curv_relative = epsilon_curv_relative
+        self.epsilon_acc_absolute = adversarial.epsilon_acc_absolute
+        self.epsilon_curv_absolute = adversarial.epsilon_curv_absolute
+        self.epsilon_acc_relative = adversarial.epsilon_acc_relative
+        self.epsilon_curv_relative = adversarial.epsilon_curv_relative
 
         # prediction model settings
-        self.pert_model = pert_model
-        self.Domain = Domain
-        self.T = T
-        self.pert_model = pert_model
-        self.img = img
-        self.img_m_per_px = img_m_per_px
-        self.num_steps = num_steps
+        self.pert_model = adversarial.pert_model
+        self.Domain = adversarial.Domain
+        self.T = adversarial.T
+        self.img = adversarial.img
+        self.img_m_per_px = adversarial.img_m_per_px
+        self.num_steps = adversarial.num_steps_predict
+                            
+                              
 
-    def randomized_smoothing(self, smoothing):
+    def randomized_smoothing(self):
         """
         Applies randomized adversarial smoothing and returns the smoothed data.
 
@@ -72,7 +70,7 @@ class Smoothing:
                    - Y_pred_smoothed (np.ndarray): The predictions for smoothed unperturbed data.
                    - Y_pred_smoothed_adv (np.ndarray): The predictions for smoothed adversarial data.
         """
-        if smoothing is False:
+        if self.smoothing is False:
             return None, None, None, None
 
          # Storage for the inputs with gaussian noise
@@ -185,7 +183,7 @@ class Smoothing:
 
         # compute the smoothed data given the noised control actions
         data_noised = Control_action.dynamical_model(
-            control_action_noise_data, self.data, self.heading, self.velocity, self.dt, device=self.device)
+            control_action_noise_data, self.data, self.heading, self.velocity, self.dt, device=self.pert_model.device)
 
         data_noised, _ = Helper.return_data(
             data_noised, self.X, self.Y, self.future_action)

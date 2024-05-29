@@ -13,45 +13,45 @@ from Adversarial_classes.control_action import Control_action
 
 
 class Plot:
-    def __init__(self, future_action, dt, control_action_graph, device, tar_agent, ego_agent, epsilon_acc_relative, epsilon_curv_relative, epsilon_acc_absolute, epsilon_curv_absolute, wheelbase, car_length, car_width, loss_function, sigma_acceleration, sigma_curvature):
+    def __init__(self, adversarial):
         # control_action_settings
-        self.future_action = future_action
-        self.dt = dt
+        self.future_action = adversarial.future_action_included
+        self.dt = adversarial.dt
 
         # plotting setting
-        self.control_action_graph = control_action_graph
+        self.control_action_graph = adversarial.control_action_graph
 
         # device
-        self.device = device
+        self.device = adversarial.pert_model.device
 
         # agents index
-        self.tar_agent = tar_agent
-        self.ego_agent = ego_agent
+        self.tar_agent = adversarial.tar_agent_index
+        self.ego_agent = adversarial.ego_agent_index
 
         # Clamping values
-        self.epsilon_acc_relative = epsilon_acc_relative
-        self.epsilon_curv_relative = epsilon_curv_relative
+        self.epsilon_acc_relative = adversarial.epsilon_acc_relative
+        self.epsilon_curv_relative = adversarial.epsilon_curv_relative
 
-        self.epsilon_acc_absolute = epsilon_acc_absolute
-        self.epsilon_curv_absolute = epsilon_curv_absolute
+        self.epsilon_acc_absolute = adversarial.epsilon_acc_absolute
+        self.epsilon_curv_absolute = adversarial.epsilon_curv_absolute
 
         # smoothing sigmas
-        self.sigma_acceleration = sigma_acceleration
-        self.sigma_curvature = sigma_curvature
+        self.sigma_acceleration = adversarial.sigma_acceleration
+        self.sigma_curvature = adversarial.sigma_curvature
 
         # animation interpolation
         self.interpolation = 4
         self.dt_new = self.dt / self.interpolation
 
         # car dimensions
-        self.wheelbase = wheelbase
-        self.car_length = car_length
-        self.car_width = car_width
+        self.wheelbase = adversarial.wheelbase
+        self.car_length = adversarial.car_length
+        self.car_width = adversarial.car_width
 
         # loss function
-        self.Name_attack = loss_function
+        self.Name_attack = adversarial.loss_function
 
-    def plot_static_data(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, spline_data, plot_input):
+    def plot_static_data(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, plot_input):
         # Iterate over each example in the data
         for index_batch in range(X.shape[0]):
             fig, ax = self.subplot_setup(
@@ -59,8 +59,8 @@ class Plot:
 
             for index_agent in range(X.shape[1]):
                 if plot_input:
-                    # Plot spline data
-                    ax.plot(spline_data[index_batch, index_agent, :, 0], spline_data[index_batch, index_agent,
+                    # Plot barrier data
+                    ax.plot(data_barrier[index_batch, index_agent, :, 0], data_barrier[index_batch, index_agent,
                                                                                      :, 1], marker='o', color='m', label='Spline data', markersize=6, alpha=0.2)
 
                     # Plot ego and tar data
@@ -167,7 +167,7 @@ class Plot:
 
             plt.show()
 
-    def plot_smoothing(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, future_action, X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv):
+    def plot_smoothing(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv):
         # Plot the randomized smoothing
         for index_batch in range(X.shape[0]):
             # loop over the sigmas

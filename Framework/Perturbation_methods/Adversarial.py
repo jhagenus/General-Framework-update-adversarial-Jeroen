@@ -243,7 +243,7 @@ class Adversarial(perturbation_template):
         # torch.autograd.set_detect_anomaly(True)
 
         # Prepare the data (ordering/spline/edge_cases)
-        X, Y = self.prepare_data(X, Y, agent)
+        X, Y = self.prepare_data(X, Y, T, agent, Domain)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
         X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self.prepare_data_attack(
@@ -298,12 +298,16 @@ class Adversarial(perturbation_template):
             # Update Control inputs
             with torch.no_grad():
                 perturbation.subtract_(grad, alpha=self.alpha)
-                perturbation[:, :, :,0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
-                perturbation[:, :, :, 1].clamp_(-self.epsilon_curv_relative, self.epsilon_curv_relative)
+                perturbation[:, :, :,
+                             0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
+                perturbation[:, :, :, 1].clamp_(
+                    -self.epsilon_curv_relative, self.epsilon_curv_relative)
 
                 control_action_perturbed = control_action + perturbation
-                control_action_perturbed[:, :, :, 0].clamp_(-self.epsilon_acc_absolute, self.epsilon_acc_absolute)
-                control_action_perturbed[:, :, :, 1].clamp_(-self.epsilon_curv_absolute, self.epsilon_curv_absolute)
+                control_action_perturbed[:, :, :, 0].clamp_(
+                    -self.epsilon_acc_absolute, self.epsilon_acc_absolute)
+                control_action_perturbed[:, :, :, 1].clamp_(
+                    -self.epsilon_curv_absolute, self.epsilon_curv_absolute)
 
                 perturbation.copy_(control_action_perturbed - control_action)
                 #perturbation + controlaction
@@ -326,7 +330,7 @@ class Adversarial(perturbation_template):
 
         # Gaussian smoothing module
         self.X_smoothed, self.X_smoothed_adv, self.Y_pred_smoothed, self.Y_pred_smoothed_adv = self.smoothing_module(
-            X, Y, control_action, perturbation, adv_position, velocity, heading, T, Domain)
+            X, Y, control_action, perturbation, adv_position, velocity, heading)
 
         # Detach the tensor and convert to numpy
         X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier = Helper.detach_tensor(
@@ -347,13 +351,12 @@ class Adversarial(perturbation_template):
 
     def ploting_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, loss_store, control_action, perturbation):
         # Initialize the plot class
-        plot = Plot(future_action=self.future_action_included, dt=self.dt, control_action_graph=self.control_action_graph, device=self.pert_model.device, tar_agent=self.tar_agent_index, ego_agent=self.ego_agent_index, epsilon_acc_relative=self.epsilon_acc_relative, epsilon_curv_relative=self.epsilon_curv_relative,
-                    epsilon_acc_absolute=self.epsilon_acc_absolute, epsilon_curv_absolute=self.epsilon_curv_absolute, wheelbase=self.wheelbase, car_length=self.car_length, car_width=self.car_width, loss_function=self.loss_function, sigma_acceleration=self.sigma_acceleration, sigma_curvature=self.sigma_curvature)
-        
-        # Plot the input/spline data if required
+        plot = Plot(self)
+
+        # Plot the input/barrier data if required
         if self.plot_input:
             plot.plot_static_data(X=X, X_new=None, Y=Y, Y_new=None, Y_Pred=None,
-                                  Y_Pred_iter_1=None, spline_data=data_barrier, plot_input=self.plot_input)
+                                  Y_Pred_iter_1=None, data_barrier=data_barrier, plot_input=self.plot_input)
 
         # Plot the loss over the iterations
         if self.plot_loss:
@@ -362,7 +365,7 @@ class Adversarial(perturbation_template):
         # Plot the static adversarial scene
         if self.static_adv_scene:
             plot.plot_static_data(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred,
-                                  Y_Pred_iter_1=Y_Pred_iter_1, spline_data=data_barrier, plot_input=False)
+                                  Y_Pred_iter_1=Y_Pred_iter_1, data_barrier=data_barrier, plot_input=False)
 
         # Plot the animated adversarial scene
         if self.animated_adv_scene:
@@ -371,57 +374,37 @@ class Adversarial(perturbation_template):
 
         # Plot the randomized smoothing
         if self.plot_smoothing:
-            plot.plot_smoothing(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, self.future_action,
-                                self.X_smoothed, self.X_smoothed_adv, self.Y_pred_smoothed, self.Y_pred_smoothed_adv)
+            plot.plot_smoothing(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1,
+                                X_smoothed=self.X_smoothed, X_smoothed_adv=self.X_smoothed_adv, Y_pred_smoothed=self.Y_pred_smoothed, Y_pred_smoothed_adv=self.Y_pred_smoothed_adv)
 
     def loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier):
         # calculate the loss
-        losses = Loss.calculate_loss(X=X,
+        losses = Loss.calculate_loss(self,
+                                     X=X,
                                      X_new=X_new,
                                      Y=Y,
                                      Y_new=Y_new,
                                      Y_Pred=Y_Pred,
                                      Y_Pred_iter_1=Y_Pred_iter_1,
-                                     distance_threshold=self.distance_threshold,
-                                     log_value=self.log_value,
-                                     barrier_data=data_barrier,
-                                     loss_function=self.loss_function,
-                                     barrier_function=self.barrier_function,
-                                     tar_agent=self.tar_agent_index,
-                                     ego_agent=self.ego_agent_index)
+                                     barrier_data=data_barrier
+                                     )
 
         return losses
 
-    def smoothing_module(self, X, Y, control_action, perturbation, adv_position, velocity, heading, T, Domain):
+    def smoothing_module(self, X, Y, control_action, perturbation, adv_position, velocity, heading):
         # initialize smoothing
-        smoothing = Smoothing(control_action=control_action,
+        smoothing = Smoothing(self,
+                              control_action=control_action,
                               control_action_perturbed=control_action+perturbation,
                               adv_position=adv_position,
                               velocity=velocity,
                               heading=heading,
-                              dt=self.dt,
-                              tar_agent=self.tar_agent_index,
-                              num_samples_smoothing=self.num_samples_used_smoothing,
-                              sigma_acceleration=self.sigma_acceleration,
-                              sigma_curvature=self.sigma_curvature,
-                              epsilon_acc_absolute=self.epsilon_acc_absolute,
-                              epsilon_curv_absolute=self.epsilon_curv_absolute,
-                              epsilon_acc_relative=self.epsilon_acc_relative,
-                              epsilon_curv_relative=self.epsilon_curv_relative,
-                              pert_model=self.pert_model,
-                              Domain=Domain,
-                              T=T,
-                              img=self.img,
-                              img_m_per_px=self.img_m_per_px,
-                              num_steps=self.num_steps_predict,
                               X=X,
-                              Y=Y,
-                              future_action=self.future_action_included,
-                              device = self.pert_model.device)
+                              Y=Y
+                              )
 
         # Randomized smoothing
-        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = smoothing.randomized_smoothing(
-            self.smoothing)
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = smoothing.randomized_smoothing()
 
         return X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv
 
@@ -463,7 +446,7 @@ class Adversarial(perturbation_template):
 
         return img, img_m_per_px
 
-    def prepare_data(self, X, Y, agent):
+    def prepare_data(self, X, Y, T, agent, Domain):
         # Remove nan from input and remember old shape
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
@@ -471,6 +454,9 @@ class Adversarial(perturbation_template):
         # Flip dimensions agents
         X, Y, self.agent_order = Helper.flip_dimensions(
             X=X, Y=Y, agent=agent, flip_dimensions=self.flip_dimensions)
+
+        self.T = T
+        self.Domain = Domain
 
         return X, Y
 
@@ -516,7 +502,7 @@ class Adversarial(perturbation_template):
 
         '''
 
-        self.batch_size = 2
+        self.batch_size = 1
 
     def requirerments(self):
         '''
@@ -548,4 +534,3 @@ class Adversarial(perturbation_template):
         # TODO: Implement this function, use self.pert_model to get the requirements of the model.
 
         return {}
-

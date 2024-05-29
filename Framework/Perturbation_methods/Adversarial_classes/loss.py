@@ -31,7 +31,7 @@ class LossContext:
 # Static class containing various loss functions and barrier functions
 class Loss:
     @staticmethod
-    def calculate_loss(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, distance_threshold, log_value, barrier_data, loss_function, barrier_function, tar_agent, ego_agent):
+    def calculate_loss(adversarial,X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, barrier_data):
         """
         Calculates the loss based on the specified loss and barrier functions.
 
@@ -53,11 +53,11 @@ class Loss:
         Returns:
             torch.Tensor: The calculated loss.
         """
-        loss_function = get_name.loss_function_name(loss_function)
+        loss_function = get_name.loss_function_name(adversarial.loss_function)
         barrier_function = get_name.barrier_function_name(
-            barrier_function, distance_threshold, log_value, barrier_data) if barrier_function else None
+            adversarial.barrier_function, adversarial.distance_threshold, adversarial.log_value, barrier_data) if adversarial.barrier_function else None
         loss_context = LossContext(loss_function, barrier_function)
-        return loss_context.calculate_loss(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, tar_agent, ego_agent)
+        return loss_context.calculate_loss(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, adversarial.tar_agent_index, adversarial.ego_agent_index)
 
     @staticmethod
     def ADE_loss_Y_GT_and_Y_pred(Y, Pred_t, tar_agent):
