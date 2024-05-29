@@ -150,20 +150,6 @@ class Adversarial(perturbation_template):
         self.car_width = 1.7
         self.wheelbase = 2.7
 
-        # Change ego and tar vehicle -> (Important to keep this on True to perturb the agent that turns left)
-        self.flip_dimensions = True
-
-        # Select which agent in datasets to attack
-        # JULIAN: flip_dimensions() in helper.py suggests that this is must be the case.
-        # JULIAN: So maybe not make this seems as something you can easily change, especially not make
-        # JULIAN: This a parameter in the functions that you pass this to
-        # JULIAN: Instead, if you want to use this varaible, pass self (i.e., Adversarial) to the function, and then
-        # JULIAN: then use Adversarial.tar_agent_index and Adversarial.ego_agent_index in those functions
-        # JULIAN: This has the added benefit ofg reducing the number of function parameters, which should always
-        # JULIAN: be a goal when designing a function
-        self.tar_agent_index = 0
-        self.ego_agent_index = 1
-
         # Initialize parameters
         self.num_samples = 5  # Defined as (K) in our paper
         self.max_number_iterations = 5
@@ -202,7 +188,7 @@ class Adversarial(perturbation_template):
         self.dt = self.kwargs['data_param']['dt']
 
         # Do a assertion check on settings
-        self.assertion_check()
+        self._assertion_check()
 
     def perturb_batch(self, X, Y, T, agent, Domain):
         '''
@@ -243,10 +229,10 @@ class Adversarial(perturbation_template):
         # torch.autograd.set_detect_anomaly(True)
 
         # Prepare the data (ordering/spline/edge_cases)
-        X, Y = self.prepare_data(X, Y, T, agent, Domain)
+        X, Y = self._prepare_data(X, Y, T, agent, Domain)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
-        X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self.prepare_data_attack(
+        X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self._prepare_data_attack(
             X, Y)
 
         # Calculate initial control actions
@@ -284,7 +270,7 @@ class Adversarial(perturbation_template):
                 # Store the first prediction
                 Y_Pred_iter_1 = Y_Pred.detach()
 
-            losses = self.loss_module(
+            losses = self._loss_module(
                 X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier)
 
             # Store the loss for plot
@@ -329,7 +315,7 @@ class Adversarial(perturbation_template):
                                                       num_steps=self.num_steps_predict, num_samples=self.num_samples)
 
         # Gaussian smoothing module
-        self.X_smoothed, self.X_smoothed_adv, self.Y_pred_smoothed, self.Y_pred_smoothed_adv = self.smoothing_module(
+        self.X_smoothed, self.X_smoothed_adv, self.Y_pred_smoothed, self.Y_pred_smoothed_adv = self._smoothing_module(
             X, Y, control_action, perturbation, adv_position, velocity, heading)
 
         # Detach the tensor and convert to numpy
@@ -337,7 +323,7 @@ class Adversarial(perturbation_template):
             X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier)
 
         # Plot the data
-        self.ploting_module(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1,
+        self._ploting_module(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1,
                             data_barrier, loss_store, control_action, perturbation)
 
         # Return Y to old shape
@@ -345,11 +331,11 @@ class Adversarial(perturbation_template):
 
         # Flip dimensions back
         X_new_pert, Y_new_pert = Helper.flip_dimensions_2(
-            self.flip_dimensions, X_new, Y_new, self.agent_order)
+            X_new, Y_new, self.agent_order)
 
         return X_new_pert, Y_new_pert
 
-    def ploting_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, loss_store, control_action, perturbation):
+    def _ploting_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, loss_store, control_action, perturbation):
         # Initialize the plot class
         plot = Plot(self)
 
@@ -377,7 +363,7 @@ class Adversarial(perturbation_template):
             plot.plot_smoothing(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1,
                                 X_smoothed=self.X_smoothed, X_smoothed_adv=self.X_smoothed_adv, Y_pred_smoothed=self.Y_pred_smoothed, Y_pred_smoothed_adv=self.Y_pred_smoothed_adv)
 
-    def loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier):
+    def _loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier):
         # calculate the loss
         losses = Loss.calculate_loss(self,
                                      X=X,
@@ -391,7 +377,7 @@ class Adversarial(perturbation_template):
 
         return losses
 
-    def smoothing_module(self, X, Y, control_action, perturbation, adv_position, velocity, heading):
+    def _smoothing_module(self, X, Y, control_action, perturbation, adv_position, velocity, heading):
         # initialize smoothing
         smoothing = Smoothing(self,
                               control_action=control_action,
@@ -408,13 +394,13 @@ class Adversarial(perturbation_template):
 
         return X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv
 
-    def assertion_check(self):
+    def _assertion_check(self):
         # check if the size of both sigmas are the same
         Helper.check_size_list(self.sigma_acceleration, self.sigma_curvature)
 
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
 
-    def load_images(self, X, Domain):
+    def _load_images(self, X, Domain):
         Img_needed = np.zeros(X.shape[:2], bool)
         Img_needed[:, 0] = True
 
@@ -446,21 +432,21 @@ class Adversarial(perturbation_template):
 
         return img, img_m_per_px
 
-    def prepare_data(self, X, Y, T, agent, Domain):
+    def _prepare_data(self, X, Y, T, agent, Domain):
         # Remove nan from input and remember old shape
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
 
         # Flip dimensions agents
-        X, Y, self.agent_order = Helper.flip_dimensions(
-            X=X, Y=Y, agent=agent, flip_dimensions=self.flip_dimensions)
+        X, Y, self.agent_order, self.tar_agent_index, self.ego_agent_index = Helper.flip_dimensions(
+            X=X, Y=Y, agent=agent)
 
         self.T = T
         self.Domain = Domain
 
         return X, Y
 
-    def prepare_data_attack(self, X, Y):
+    def _prepare_data_attack(self, X, Y):
         # Convert to tensor
         X, Y = Helper.convert_to_tensor(self.pert_model.device, X, Y)
 
@@ -474,7 +460,7 @@ class Adversarial(perturbation_template):
         self.mask_data = Helper.compute_mask_values_tensor(positions_perturb)
 
         # Load images for adversarial attack
-        # img, img_m_per_px = self.load_images(X,Domain)
+        # img, img_m_per_px = self._load_images(X,Domain)
         self.img, self.img_m_per_px = None, None
 
         # Show image

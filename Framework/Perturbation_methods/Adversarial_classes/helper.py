@@ -113,12 +113,11 @@ class Helper:
         assert args[0] * args[1] >= args[2], "The third value is to large."
 
     @staticmethod
-    def flip_dimensions_2(flip_dimensions, X_new_pert, Y_new_pert, agent_order):
+    def flip_dimensions_2(X_new_pert, Y_new_pert, agent_order):
         """
         Reorders the dimensions of the perturbed tensors based on the original agent order if flipping is required.
 
         Args:
-            flip_dimensions (bool): A boolean indicating whether dimension flipping is required.
             X_new_pert (np.ndarray): The perturbed X tensor.
             Y_new_pert (np.ndarray): The perturbed Y tensor.
             agent_order (np.ndarray): The original order of agents.
@@ -128,10 +127,10 @@ class Helper:
                 - X_new_pert (np.ndarray): The reordered X tensor.
                 - Y_new_pert (np.ndarray): The reordered Y tensor.
         """
-        if flip_dimensions:
-            agent_order_inverse = np.argsort(agent_order)
-            X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
-            Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
+        
+        agent_order_inverse = np.argsort(agent_order)
+        X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
+        Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
 
         return X_new_pert, Y_new_pert
 
@@ -188,7 +187,7 @@ class Helper:
         return mask_clone
 
     @staticmethod
-    def flip_dimensions(X, Y, agent, flip_dimensions):
+    def flip_dimensions(X, Y, agent):
         """
         Flips the dimensions of the input arrays based on the specified agent and reorders the agent dimensions.
 
@@ -203,11 +202,11 @@ class Helper:
                    - X (np.ndarray): The reordered X array.
                    - Y (np.ndarray): The reordered Y array.
                    - agent_order (np.ndarray or None): The new order of agents, or None if no flipping is required.
+                   - tar_index (int): The index of the target agent.
+                   - ego_index (int): The index of the ego agent.
         """
         # Early exit if no dimension flipping is required
-        if flip_dimensions == False:
-            return X, Y, None
-
+        
         # Determine the indices for the target and ego agents
         i_agent_perturbed = np.where(agent == 'tar')[0][0]
         i_agent_collision = np.where(agent == 'ego')[0][0]
@@ -225,7 +224,11 @@ class Helper:
         X = X[:, agent_order, :, :]
         Y = Y[:, agent_order, :, :]
 
-        return X, Y, agent_order
+        # Return the index of tar and ego agent
+        tar_index = 0
+        ego_index = 1
+
+        return X, Y, agent_order, tar_index, ego_index
 
     @staticmethod
     def convert_to_tensor(device, *args):
