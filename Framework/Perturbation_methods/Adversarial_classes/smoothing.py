@@ -7,17 +7,20 @@ from Adversarial_classes.helper import Helper
 
 
 class Smoothing:
-    def __init__(self, control_action, control_action_perturbed,adv_position,velocity,heading,dt,tar_agent,num_samples_smoothing,sigma_acceleration,sigma_curvature,
-                 epsilon_acc_absolute,epsilon_curv_absolute,epsilon_acc_relative,epsilon_curv_relative,
-                 pert_model,Domain,T,img,img_m_per_px,num_steps,X,Y,future_action):
-        
+    def __init__(self, control_action, control_action_perturbed, adv_position, velocity, heading, dt, tar_agent, num_samples_smoothing, sigma_acceleration, sigma_curvature,
+                 epsilon_acc_absolute, epsilon_curv_absolute, epsilon_acc_relative, epsilon_curv_relative,
+                 pert_model, Domain, T, img, img_m_per_px, num_steps, X, Y, future_action, device):
+
         # control action
         self.control_action = control_action
-        
+
+        # device 
+        self.device = device
+
         # control actions perturbed
         self.control_action_perturbed = control_action_perturbed
 
-        # Data for dynamical model 
+        # Data for dynamical model
         self.data = adv_position
         self.velocity = velocity
         self.heading = heading
@@ -71,7 +74,7 @@ class Smoothing:
         """
         if smoothing is False:
             return None, None, None, None
-        
+
          # Storage for the inputs with gaussian noise
         X_smoothed = [[] for _ in self.sigma_curvature]
         X_smoothed_adv = [[] for _ in self.sigma_curvature]
@@ -84,25 +87,28 @@ class Smoothing:
         for index_sigma in range(len(self.sigma_acceleration)):
             for _ in range(self.num_samples_smoothing):
                 # smooth unperturbed data
-                smoothed_X, Y_Pred_smoothed = self.forward_pass_smoothing(index_sigma, False)
+                smoothed_X, Y_Pred_smoothed = self.forward_pass_smoothing(
+                    index_sigma, False)
 
                 # append the smoothed unperturbed data
                 X_smoothed[index_sigma].append(smoothed_X)
                 Y_pred_smoothed[index_sigma].append(Y_Pred_smoothed)
 
                 # smooth adversarial data
-                smoothed_X_new, Y_Pred_smoothed_adv = self.forward_pass_smoothing(index_sigma, True)
+                smoothed_X_new, Y_Pred_smoothed_adv = self.forward_pass_smoothing(
+                    index_sigma, True)
 
                 # append the smoothed adversarial data
                 X_smoothed_adv[index_sigma].append(smoothed_X_new)
                 Y_pred_smoothed_adv[index_sigma].append(Y_Pred_smoothed_adv)
 
         # Return to array
-        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = Helper.convert_to_numpy_array(X_smoothed,X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv)
-    
+        X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = Helper.convert_to_numpy_array(
+            X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv)
+
         return X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv
 
-    def forward_pass_smoothing(self, index_sigma,perturbed):
+    def forward_pass_smoothing(self, index_sigma, perturbed):
         """
         Performs a forward pass with noise addition and prediction smoothing.
 
@@ -117,20 +123,21 @@ class Smoothing:
         """
 
         # Add noise to the target agent
-        data_noised = self.add_noise_control_actions(index_sigma,perturbed)
+        data_noised = self.add_noise_control_actions(index_sigma, perturbed)
 
         # Make the prediction and calculate the expectation
-        Y_Pred_smoothed = self.pert_model.predict_batch_tensor(X=data_noised, 
-                                                        T=self.T, 
-                                                        Domain=self.Domain, 
-                                                        img=self.img, 
-                                                        img_m_per_px=self.img_m_per_px, 
-                                                        num_steps=self.num_steps, 
-                                                        num_samples=1)
+        Y_Pred_smoothed = self.pert_model.predict_batch_tensor(X=data_noised,
+                                                               T=self.T,
+                                                               Domain=self.Domain,
+                                                               img=self.img,
+                                                               img_m_per_px=self.img_m_per_px,
+                                                               num_steps=self.num_steps,
+                                                               num_samples=1)
 
         # Detach tensors
         data_noised = data_noised.detach().cpu().numpy()
-        Y_Pred_smoothed = np.squeeze(Y_Pred_smoothed.detach().cpu().numpy(),axis=1)
+        Y_Pred_smoothed = np.squeeze(
+            Y_Pred_smoothed.detach().cpu().numpy(), axis=1)
 
         return data_noised, Y_Pred_smoothed
 
@@ -152,30 +159,35 @@ class Smoothing:
             control_action_data = self.control_action
 
         noise_data = torch.randn_like(control_action_data)
-        
+
         # Multiply the noise with the predefined sigmas
         noise_data[:, :, :, 0].mul_(self.sigma_acceleration[index_sigma])
         noise_data[:, :, :, 1].mul_(self.sigma_curvature[index_sigma])
 
         # Remove noise from ego agent
-        noise_data[:,1:] = 0.0
+        noise_data[:, 1:] = 0.0
 
         # apply clamping
         with torch.no_grad():
             # Clamp noise within relative limits
-            noise_data[:, :, :, 0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
-            noise_data[:, :, :, 1].clamp_(-self.epsilon_curv_relative, self.epsilon_curv_relative)
+            noise_data[:, :, :,
+                       0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
+            noise_data[:, :, :, 1].clamp_(-self.epsilon_curv_relative,
+                                          self.epsilon_curv_relative)
 
             control_action_noise_data = control_action_data + noise_data
 
             # Clamp control actions within absolute limits
-            control_action_noise_data[:, :, :, 0].clamp_(-self.epsilon_acc_absolute, self.epsilon_acc_absolute)
-            control_action_noise_data[:, :, :, 1].clamp_(-self.epsilon_curv_absolute, self.epsilon_curv_absolute)
+            control_action_noise_data[:, :, :, 0].clamp_(
+                -self.epsilon_acc_absolute, self.epsilon_acc_absolute)
+            control_action_noise_data[:, :, :, 1].clamp_(
+                -self.epsilon_curv_absolute, self.epsilon_curv_absolute)
 
         # compute the smoothed data given the noised control actions
-        data_noised = Control_action.dynamical_model(control_action_noise_data, self.data, self.heading, self.velocity, self.dt)
+        data_noised = Control_action.dynamical_model(
+            control_action_noise_data, self.data, self.heading, self.velocity, self.dt, device=self.device)
 
-        data_noised,_ = Helper.return_data(data_noised, self.X, self.Y, self.future_action)
+        data_noised, _ = Helper.return_data(
+            data_noised, self.X, self.Y, self.future_action)
 
         return data_noised
-

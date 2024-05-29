@@ -130,20 +130,20 @@ class Adversarial(perturbation_template):
 
     def initialize_settings(self):
         # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = False
+        self.plot_input = True
 
         # Spline settings
         self.total_spline_values = 100
 
         # Plot the loss over the iterations
-        self.plot_loss = False
+        self.plot_loss = True
 
         # Plot the adversarial scene
-        self.static_adv_scene = False
-        self.animated_adv_scene = False
+        self.static_adv_scene = True
+        self.animated_adv_scene = True
 
         # Setting animated scene
-        self.control_action_graph = False
+        self.control_action_graph = True
 
         # Car size
         self.car_length = 4.1
@@ -181,18 +181,18 @@ class Adversarial(perturbation_template):
         self.alpha = 0.001
 
         # Randomized smoothing
-        self.smoothing = False
+        self.smoothing = True
         self.num_samples_used_smoothing = 15  # Defined as .. in paper
         self.sigma_acceleration = [0.05, 0.1]
         self.sigma_curvature = [0.01, 0.05]
-        self.plot_smoothing = False
+        self.plot_smoothing = True
 
         # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
         # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
         self.loss_function = 'Fake_collision_GT'
 
-        # For barrier function select: 'Log', 'Spline' or None
-        self.barrier_function = 'Spline'
+        # For barrier function select: 'Log', 'Log_V2' or None
+        self.barrier_function = 'Log_V2'
 
         # Barrier function parameters
         self.distance_threshold = 1
@@ -267,7 +267,7 @@ class Adversarial(perturbation_template):
 
             # Calculate updated adversarial position
             adv_position = Control_action.dynamical_model(
-                control_action + perturbation, positions_perturb, heading, velocity, self.dt, divice=self.pert_model.device)
+                control_action + perturbation, positions_perturb, heading, velocity, self.dt, device=self.pert_model.device)
 
             # Split the adversarial position back to X and Y
             X_new, Y_new = Helper.return_data(
@@ -314,7 +314,7 @@ class Adversarial(perturbation_template):
 
         # Calculate the final adversarial position
         adv_position = Control_action.dynamical_model(
-            control_action + perturbation, positions_perturb, heading, velocity, self.dt, divice=self.pert_model.device)
+            control_action + perturbation, positions_perturb, heading, velocity, self.dt, device=self.pert_model.device)
 
         # Split the adversarial position back to X and Y
         X_new, Y_new = Helper.return_data(
@@ -349,6 +349,7 @@ class Adversarial(perturbation_template):
         # Initialize the plot class
         plot = Plot(future_action=self.future_action_included, dt=self.dt, control_action_graph=self.control_action_graph, device=self.pert_model.device, tar_agent=self.tar_agent_index, ego_agent=self.ego_agent_index, epsilon_acc_relative=self.epsilon_acc_relative, epsilon_curv_relative=self.epsilon_curv_relative,
                     epsilon_acc_absolute=self.epsilon_acc_absolute, epsilon_curv_absolute=self.epsilon_curv_absolute, wheelbase=self.wheelbase, car_length=self.car_length, car_width=self.car_width, loss_function=self.loss_function, sigma_acceleration=self.sigma_acceleration, sigma_curvature=self.sigma_curvature)
+        
         # Plot the input/spline data if required
         if self.plot_input:
             plot.plot_static_data(X=X, X_new=None, Y=Y, Y_new=None, Y_Pred=None,
@@ -415,7 +416,8 @@ class Adversarial(perturbation_template):
                               num_steps=self.num_steps_predict,
                               X=X,
                               Y=Y,
-                              future_action=self.future_action_included)
+                              future_action=self.future_action_included,
+                              device = self.pert_model.device)
 
         # Randomized smoothing
         X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv = smoothing.randomized_smoothing(
@@ -547,33 +549,3 @@ class Adversarial(perturbation_template):
 
         return {}
 
-    # indices_to_remove, data_filtered = self.remove_indices(positions_perturb,mask_data)
-
-    # new_data = self.add_back_indices(positions_perturb, data_filtered, indices_to_remove)
-
-       # def remove_indices(self,data,mask):
-    #     # Identify indices to remove
-    #     indices_to_remove = []
-    #     for i in range(data.shape[0]):
-    #         if torch.all(mask[i, 0, :, :] == True):
-    #             indices_to_remove.append(i)
-
-    #     if len(indices_to_remove) == data.shape[0]:
-    #         data_filtered = None
-    #     elif len(indices_to_remove) == data.shape[0]-1:
-    #         data_filtered = data[indices_to_remove[0]:indices_to_remove[0]+1]
-    #     else:
-    #         data_filtered = torch.cat([data[i:i+1] for i in range(data.shape[0]) if i not in indices_to_remove], dim=0)
-
-    #     return indices_to_remove, data_filtered
-
-    # def add_back_indices(self, data_old, data_new, indices_to_remove):
-    #     new_data = torch.zeros_like(data_old)
-    #     j = 0
-    #     for i in range(data_old.shape[0]):
-    #         if i in indices_to_remove:
-    #             new_data[i] = data_old[i:i+1]
-    #         else:
-    #             new_data[i] = data_new[j:j+1]
-    #             j += 1
-    #     return new_data

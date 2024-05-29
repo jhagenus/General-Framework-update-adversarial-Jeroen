@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
-        
+
 # Abstract base class for loss functions
 class LossFunction(ABC):
     @abstractmethod
@@ -13,7 +13,6 @@ class BarrierFunction(ABC):
     def calculate_barrier(self, X_new, X, tar_agent):
         pass
 
-
 # Context for calculating loss with optional barrier
 class LossContext:
     def __init__(self, loss_strategy: LossFunction, barrier_strategy: BarrierFunction = None):
@@ -21,16 +20,18 @@ class LossContext:
         self.barrier_strategy = barrier_strategy
 
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
-        loss = self.loss_strategy.calculate_loss(X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent)
+        loss = self.loss_strategy.calculate_loss(
+            X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent)
         if self.barrier_strategy:
-            barrier_output = self.barrier_strategy.calculate_barrier(X_new, X, tar_agent)
+            barrier_output = self.barrier_strategy.calculate_barrier(
+                X_new, X, tar_agent)
             loss -= barrier_output
         return loss
 
 # Static class containing various loss functions and barrier functions
 class Loss:
     @staticmethod
-    def calculate_loss(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, distance_threshold, log_value, spline_data, loss_function, barrier_function, tar_agent, ego_agent):
+    def calculate_loss(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, distance_threshold, log_value, barrier_data, loss_function, barrier_function, tar_agent, ego_agent):
         """
         Calculates the loss based on the specified loss and barrier functions.
 
@@ -43,7 +44,7 @@ class Loss:
             Y_Pred_iter_1 (torch.Tensor): The predicted future position tensor from the first iteration with array shape (batch size, number predictions (K), number time steps future, coordinates (x,y))
             distance_threshold (float): The distance threshold for the barrier function.
             log_value (float): The logarithm base value for the barrier function.
-            spline_data (torch.Tensor): The spline data for the barrier function with array shape (batch size, number agents, number spline data, coordinates (x,y))
+            barrier_data (torch.Tensor): The data (concatenation of X and Y) for the barrier function with array shape (batch size, number agents, number time steps observed and future, coordinates (x,y))
             loss_function (str): The name of the loss function.
             barrier_function (str): The name of the barrier function.
             tar_agent (int): The index of the target agent.
@@ -53,7 +54,8 @@ class Loss:
             torch.Tensor: The calculated loss.
         """
         loss_function = get_name.loss_function_name(loss_function)
-        barrier_function = get_name.barrier_function_name(barrier_function, distance_threshold, log_value, spline_data) if barrier_function else None
+        barrier_function = get_name.barrier_function_name(
+            barrier_function, distance_threshold, log_value, barrier_data) if barrier_function else None
         loss_context = LossContext(loss_function, barrier_function)
         return loss_context.calculate_loss(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, tar_agent, ego_agent)
 
@@ -71,7 +73,7 @@ class Loss:
             torch.Tensor: The ADE loss.
         """
         # norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
-        return torch.mean(torch.mean(torch.linalg.norm(Y[:,tar_agent,:,:].unsqueeze(1) - Pred_t, dim=-1 , ord = 2), dim=-1),dim=-1) 
+        return torch.mean(torch.mean(torch.linalg.norm(Y[:, tar_agent, :, :].unsqueeze(1) - Pred_t, dim=-1, ord=2), dim=-1), dim=-1)
 
     @staticmethod
     def ADE_loss_Y_pred_and_Y_perturb(Y_new, Pred_t, tar_agent):
@@ -87,7 +89,7 @@ class Loss:
             torch.Tensor: The ADE loss.
         """
         # norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
-        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:,tar_agent,:,:].unsqueeze(1) - Pred_t, dim=-1 , ord = 2), dim=-1),dim=-1)
+        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:, tar_agent, :, :].unsqueeze(1) - Pred_t, dim=-1, ord=2), dim=-1), dim=-1)
 
     @staticmethod
     def ADE_loss_Y_pred_iteration_1_and_Y_perturb(Y_new, Pred_iter_1, tar_agent):
@@ -103,7 +105,7 @@ class Loss:
             torch.Tensor: The ADE loss.
         """
         # norm is over the positions -> inner torch.mean is over the time steps -> outer torch.mean is over the number of prediciton
-        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:,tar_agent,:,:].unsqueeze(1) - Pred_iter_1, dim=-1 , ord = 2), dim=-1),dim=-1)
+        return torch.mean(torch.mean(torch.linalg.norm(Y_new[:, tar_agent, :, :].unsqueeze(1) - Pred_iter_1, dim=-1, ord=2), dim=-1), dim=-1)
 
     @staticmethod
     def ADE_loss_Y_pred_and_Y_pred_iteration_1(Pred_t, Pred_iter_1):
@@ -133,8 +135,8 @@ class Loss:
         Returns:
             torch.Tensor: The ADE loss.
         """
-        # index 0 is the target agent -> norm is over the positions -> torch.mean is over the time steps 
-        return torch.mean(torch.linalg.norm(Y_new[:,tar_agent,:,:] - Y[:,tar_agent,:,:], dim=-1, ord=2), dim=-1)
+        # index 0 is the target agent -> norm is over the positions -> torch.mean is over the time steps
+        return torch.mean(torch.linalg.norm(Y_new[:, tar_agent, :, :] - Y[:, tar_agent, :, :], dim=-1, ord=2), dim=-1)
 
     @staticmethod
     def collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent):
@@ -149,8 +151,8 @@ class Loss:
         Returns:
             torch.Tensor: The collision loss.
         """
-        #norm is over the positions -> torch.min is over the time steps -> torch.mean is over the number of prediciton
-        return torch.mean(torch.linalg.norm(Y[:,ego_agent,:,:].unsqueeze(1) - Pred_t, dim=-1, ord=2).min(dim=-1).values, dim=-1)
+        # norm is over the positions -> torch.min is over the time steps -> torch.mean is over the number of prediciton
+        return torch.mean(torch.linalg.norm(Y[:, ego_agent, :, :].unsqueeze(1) - Pred_t, dim=-1, ord=2).min(dim=-1).values, dim=-1)
 
     @staticmethod
     def collision_loss_Y_ego_GT_and_Y_perturb_tar(Y_new, Y, tar_agent, ego_agent):
@@ -166,8 +168,8 @@ class Loss:
         Returns:
             torch.Tensor: The collision loss.
         """
-        # norm is over the positions -> torch.min is over the time steps 
-        return torch.linalg.norm(Y[:,ego_agent,:,:] - Y_new[:,tar_agent,:,:], dim=-1, ord=2).min(dim=-1).values
+        # norm is over the positions -> torch.min is over the time steps
+        return torch.linalg.norm(Y[:, ego_agent, :, :] - Y_new[:, tar_agent, :, :], dim=-1, ord=2).min(dim=-1).values
 
     @staticmethod
     def barrier_log_function(distance_threshold, X_new, X, log_value, tar_agent):
@@ -184,45 +186,48 @@ class Loss:
         Returns:
             torch.Tensor: The barrier log function value.
         """
-        barrier_norm = torch.norm(X_new[:,tar_agent,:,:] - X[:,tar_agent,:,:], dim=-1)
+        barrier_norm = torch.norm(
+            X_new[:, tar_agent, :, :] - X[:, tar_agent, :, :], dim=-1)
         barrier_log = torch.log(distance_threshold - barrier_norm)
         barrier_log_new = barrier_log / torch.log(torch.tensor(log_value))
         return torch.mean(barrier_log_new, dim=-1)
 
     @staticmethod
-    def barrier_log_function_spline(distance_threshold, X_new, spline_data, log_value, tar_agent):
+    def barrier_log_function_V2(distance_threshold, X_new, data_barrier, log_value, tar_agent):
         """
-        Calculates the barrier log function based on the distance between adversarial positions and spline data.
+        Calculates the barrier log function based on the distance between adversarial positions and barrier data.
 
         Args:
             distance_threshold (float): The distance threshold for the barrier function.
             X_new (torch.Tensor): The adversarial position tensor.
-            spline_data (torch.Tensor): The spline data tensor.
+            barrier_data (torch.Tensor): The barrier data tensor (concatenation of X and Y).
             log_value (float): The logarithm base value for the barrier function.
             tar_agent (int): The index of the target agent.
 
         Returns:
             torch.Tensor: The barrier log function value.
         """
-        # Calculate the distance between the adversarial observed states and spline data
-        distance = torch.cdist(X_new[:,tar_agent,:,:], spline_data[:,tar_agent,:,:], p=2)
-        X_tar = X_new[:,tar_agent,:,:].unsqueeze(1).unsqueeze(1)
-        # Define lines out pf the spline data
-        spline_lines = torch.stack([spline_data[:,tar_agent,1:], spline_data[:,tar_agent,:-1]], dim=-3).unsqueeze(-2)
-
-
+        # Calculate the distance between the adversarial observed states and barrier data
+        distance = torch.cdist(
+            X_new[:, tar_agent, :, :], data_barrier[:, tar_agent, :, :], p=2)
+        X_tar = X_new[:, tar_agent, :, :].unsqueeze(1).unsqueeze(1)
+        # Define lines out pf the barrier data
+        barrier_lines = torch.stack(
+            [data_barrier[:, tar_agent, 1:], data_barrier[:, tar_agent, :-1]], dim=-3).unsqueeze(-2)
 
         # Get distance to line points
-        distance_line_points = (X_tar - spline_lines).norm(dim=-1)
-        distance_line_lower_bound = torch.min(distance_line_points, dim=1).values
+        distance_line_points = (X_tar - barrier_lines).norm(dim=-1)
+        distance_line_lower_bound = torch.min(
+            distance_line_points, dim=1).values
 
-        # Get distance to unbounded spline lines segments
-        D1 = spline_lines[:,1] - spline_lines[:,0]
-        D2 = X_tar[:,0] - spline_lines[:,0]
-        D_cross = D1[...,0] * D2[...,1] - D1[...,1] * D2[...,0]
+        # Get distance to unbounded barrier lines segments
+        D1 = barrier_lines[:, 1] - barrier_lines[:, 0]
+        D2 = X_tar[:, 0] - barrier_lines[:, 0]
+        D_cross = D1[..., 0] * D2[..., 1] - D1[..., 1] * D2[..., 0]
         distance_line = D_cross / (D1.norm(dim=-1) + 1e-6)
 
-        distance = torch.maximum(distance_line, distance_line_lower_bound).min(dim = -2).values
+        distance = torch.maximum(
+            distance_line, distance_line_lower_bound).min(dim=-2).values
 
         # calculate the barrier function
         barrier_log = torch.log(distance_threshold - distance)
@@ -253,11 +258,11 @@ class get_name:
             raise ValueError(f"Unknown loss function: {loss_function}")
 
     @staticmethod
-    def barrier_function_name(barrier_function, distance_threshold, log_value, spline_data):
+    def barrier_function_name(barrier_function, distance_threshold, log_value, barrier_data):
         if barrier_function == 'Log':
             return LogBarrier(distance_threshold, log_value)
-        elif barrier_function == 'Spline':
-            return SplineBarrier(distance_threshold, spline_data, log_value)
+        elif barrier_function == 'Log_V2':
+            return LogBarrierV2(distance_threshold, barrier_data, log_value)
         else:
             raise ValueError(f"Unknown barrier function: {barrier_function}")
 
@@ -266,29 +271,36 @@ class ADELoss(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return -Loss.ADE_loss_Y_GT_and_Y_pred(Y, Pred_t, tar_agent)
 
+
 class ADELossNewGT(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return -Loss.ADE_loss_Y_pred_and_Y_perturb(Y_new, Pred_t, tar_agent) + Loss.ADE_loss_Y_perturb_and_Y_GT(Y_new, Y, tar_agent)
+
 
 class ADELossNewPred(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return -Loss.ADE_loss_Y_pred_and_Y_perturb(Y_new, Pred_t, tar_agent) + Loss.ADE_loss_Y_pred_iteration_1_and_Y_perturb(Y_new, Pred_iter_1, tar_agent)
 
+
 class CollisionLoss(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent)
+
 
 class FakeCollisionLossGT(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent) + Loss.ADE_loss_Y_perturb_and_Y_GT(Y_new, Y, tar_agent)
 
+
 class FakeCollisionLossPred(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent) + Loss.ADE_loss_Y_pred_iteration_1_and_Y_perturb(Y_new, Pred_iter_1, tar_agent)
 
+
 class HideCollisionLossGT(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_perturb_tar(Y_new, Y, tar_agent, ego_agent) + Loss.ADE_loss_Y_GT_and_Y_pred(Y, Pred_t, tar_agent)
+
 
 class HideCollisionLossPred(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
@@ -303,11 +315,12 @@ class LogBarrier(BarrierFunction):
     def calculate_barrier(self, X_new, X, tar_agent):
         return Loss.barrier_log_function(self.distance_threshold, X_new, X, self.log_value, tar_agent)
 
-class SplineBarrier(BarrierFunction):
-    def __init__(self, distance_threshold, spline_data, log_value):
+
+class LogBarrierV2(BarrierFunction):
+    def __init__(self, distance_threshold, barrier_data, log_value):
         self.distance_threshold = distance_threshold
-        self.spline_data = spline_data
+        self.barrier_data = barrier_data
         self.log_value = log_value
 
     def calculate_barrier(self, X_new, X, tar_agent):
-        return Loss.barrier_log_function_spline(self.distance_threshold, X_new, self.spline_data, self.log_value, tar_agent)
+        return Loss.barrier_log_function_V2(self.distance_threshold, X_new, self.barrier_data, self.log_value, tar_agent)

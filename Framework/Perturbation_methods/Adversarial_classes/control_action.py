@@ -2,6 +2,7 @@ import torch
 
 from Adversarial_classes.helper import Helper
 
+
 class Control_action:
     @staticmethod
     def inverse_Dynamical_Model(positions_perturb, dt, device):
@@ -23,28 +24,31 @@ class Control_action:
         # Initialize control action
         control_action = torch.zeros(
             (positions_perturb.shape[0], positions_perturb.shape[1], positions_perturb.shape[2]-1, positions_perturb.shape[3])).to(device)
-        
+
         # Compute the mask values for agents standing still
         mask = Helper.compute_mask_values_tensor(positions_perturb)
-        mask = mask[:,:,:-1,:].to(device)
+        mask = mask[:, :, :-1, :].to(device)
 
         # Initialize heading and velocity
         heading = torch.zeros(positions_perturb.shape[:3]).to(device)
         velocity = torch.zeros(positions_perturb.shape[:3]).to(device)
 
         # update initial velocity and heading
-        velocity[:, :, 0] = Control_action.compute_velocity(positions_perturb, dt, 0)
+        velocity[:, :, 0] = Control_action.compute_velocity(
+            positions_perturb, dt, 0)
         heading[:, :, 0] = Control_action.compute_heading(positions_perturb, 0)
 
         # Create a time step tensor
         time_steps = torch.arange(positions_perturb.shape[2] - 1)
 
         # Calculate velocities for all time steps
-        all_velocities = Control_action.compute_velocity(positions_perturb, dt, time_steps)
+        all_velocities = Control_action.compute_velocity(
+            positions_perturb, dt, time_steps)
         velocity[:, :, 1:] = all_velocities
 
         # Calculate headings for all time steps
-        all_headings = Control_action.compute_heading(positions_perturb, time_steps)
+        all_headings = Control_action.compute_heading(
+            positions_perturb, time_steps)
         heading[:, :, 1:] = all_headings
 
         # acceleration control actions
@@ -57,8 +61,10 @@ class Control_action:
         curvature_control = yaw_rate / velocity[:, :, :-1]
 
         # Update the control actions
-        control_action[:, :, :, 0] = torch.where(~mask[:,:,:,0], acceleration_control, control_action[:, :, :, 0])
-        control_action[:, :, :, 1] = torch.where(~mask[:,:,:,1], curvature_control, control_action[:, :, :, 1])
+        control_action[:, :, :, 0] = torch.where(
+            ~mask[:, :, :, 0], acceleration_control, control_action[:, :, :, 0])
+        control_action[:, :, :, 1] = torch.where(
+            ~mask[:, :, :, 1], curvature_control, control_action[:, :, :, 1])
 
         return control_action, heading, velocity
 
@@ -105,7 +111,7 @@ class Control_action:
         return velocity
 
     @staticmethod
-    def dynamical_model(control_action, positions_perturb, heading, velocity, dt):
+    def dynamical_model(control_action, positions_perturb, heading, velocity, dt, device):
         """
         Computes the updated positions of agents based on the dynamical model using control actions, initial postion, velocity, and heading.
 
@@ -120,29 +126,34 @@ class Control_action:
             torch.Tensor: A tensor containing the updated positions of agents, with shape (batch size, number agents, number time_steps, coordinates (x,y)).
         """
         # Initial velocity and headin
-        velocity_init = velocity[:, :, 0]
-        heading_init = heading[:, :, 0]
+        velocity_init = velocity[:, :, 0].to(device)
+        heading_init = heading[:, :, 0].to(device)
 
         # Adversarial position storage
-        adv_position = positions_perturb.clone().detach()
+        adv_position = positions_perturb.clone().detach().to(device)
 
         # Update adversarial position based on dynamical model
         acc = control_action[:, :, :, 0]
         cur = control_action[:, :, :, 1]
 
         # Calculate the velocity for all time steps
-        Velocity_set = torch.cumsum(acc, dim=-1) * dt + velocity_init.unsqueeze(-1)
-        Velocity = torch.cat((velocity_init.unsqueeze(-1), Velocity_set), dim=-1)
+        Velocity_set = torch.cumsum(acc, dim=-1) * \
+            dt + velocity_init.unsqueeze(-1)
+        Velocity = torch.cat(
+            (velocity_init.unsqueeze(-1), Velocity_set), dim=-1)
 
         # Calculte the change of heading for all time steps
         D_yaw_rate = Velocity[:, :, :-1] * cur
 
         # Calculate Heading for all time steps
-        Heading = torch.cumsum(D_yaw_rate, dim=-1) * dt + heading_init.unsqueeze(-1)
+        Heading = torch.cumsum(D_yaw_rate, dim=-1) * \
+            dt + heading_init.unsqueeze(-1)
         Heading = torch.cat((heading_init.unsqueeze(-1), Heading), dim=-1)
 
         # Calculate the new position for all time steps
-        adv_position[:, :, 1:, 0] = torch.cumsum(Velocity[:, :, 1:] * torch.cos(Heading[:, :, 1:]), dim=-1) * dt + adv_position[:, :, 0, 0].unsqueeze(-1)
-        adv_position[:, :, 1:, 1] = torch.cumsum(Velocity[:, :, 1:] * torch.sin(Heading[:, :, 1:]), dim=-1) * dt + adv_position[:, :, 0, 1].unsqueeze(-1)
+        adv_position[:, :, 1:, 0] = torch.cumsum(Velocity[:, :, 1:] * torch.cos(
+            Heading[:, :, 1:]), dim=-1) * dt + adv_position[:, :, 0, 0].unsqueeze(-1)
+        adv_position[:, :, 1:, 1] = torch.cumsum(Velocity[:, :, 1:] * torch.sin(
+            Heading[:, :, 1:]), dim=-1) * dt + adv_position[:, :, 0, 1].unsqueeze(-1)
 
         return adv_position

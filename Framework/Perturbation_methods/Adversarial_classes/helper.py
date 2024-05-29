@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+
 class Helper:
     @staticmethod
     def check_conversion(Data_1, Data_2):
@@ -18,7 +19,7 @@ class Helper:
 
         if not equal_tensors:
             raise ValueError("The conversion is not correct.")
-    
+
     @staticmethod
     def create_data_to_perturb(X, Y, loss_function):
         """
@@ -57,12 +58,11 @@ class Helper:
         """
         # Calculate the maximum length where all values are non-NaN in the path lenght channel across all samples
         max_length = np.min(np.sum(~np.isnan(data[:, :, :, 0]), axis=2)[:, 0])
-        
+
         # Trim the array to the maximum length without NaN values in the path lenght channel
         Y_trimmed = data[:, :, :max_length, :]
-    
-        return Y_trimmed
 
+        return Y_trimmed
 
     @staticmethod
     def return_to_old_shape(Y_new_pert, Y_shape):
@@ -76,9 +76,10 @@ class Helper:
         Returns:
             np.ndarray: The tensor restored to its original shape with NaN values appended.
         """
-        nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
+        nan_array = np.full(
+            (Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
         return np.concatenate((Y_new_pert, nan_array), axis=2)
-    
+
     @staticmethod
     def validate_settings_order(First, Second):
         """
@@ -92,8 +93,9 @@ class Helper:
             ValueError: If the second element is True while the first element is False.
         """
         if Second and not First:
-            raise ValueError("Second element can only be True if First element is also True.")
-    
+            raise ValueError(
+                "Second element can only be True if First element is also True.")
+
     @staticmethod
     def assert_only_one_true(*args):
         # Check that exactly one argument is True
@@ -102,13 +104,13 @@ class Helper:
     @staticmethod
     def assert_only_zero_or_one_true(*args):
         # Check that exactly one argument is True
-        assert sum(args) <= 1, "Assertion Error: Only one value can be set on True or none."
+        assert sum(
+            args) <= 1, "Assertion Error: Only one value can be set on True or none."
 
     @staticmethod
     def assert_value_is_to_large(*args):
         # Check that the first two values are larger than the third value
         assert args[0] * args[1] >= args[2], "The third value is to large."
-
 
     @staticmethod
     def flip_dimensions_2(flip_dimensions, X_new_pert, Y_new_pert, agent_order):
@@ -130,9 +132,8 @@ class Helper:
             agent_order_inverse = np.argsort(agent_order)
             X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
             Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
-        
-        return X_new_pert, Y_new_pert
 
+        return X_new_pert, Y_new_pert
 
     @staticmethod
     def compute_mask_values_standing_still(array):
@@ -156,7 +157,7 @@ class Helper:
         mask_clone[:, :, :, 0] = True
 
         return mask_clone
-    
+
     @staticmethod
     def compute_mask_values_tensor(tensor):
         """
@@ -181,11 +182,11 @@ class Helper:
         condition = (all_true.sum(dim=-1) == 1)
 
         mask_clone = mask.clone()
-    
-        mask_clone[condition,:] = False
-        
+
+        mask_clone[condition, :] = False
+
         return mask_clone
-    
+
     @staticmethod
     def flip_dimensions(X, Y, agent, flip_dimensions):
         """
@@ -206,24 +207,26 @@ class Helper:
         # Early exit if no dimension flipping is required
         if flip_dimensions == False:
             return X, Y, None
-        
+
         # Determine the indices for the target and ego agents
         i_agent_perturbed = np.where(agent == 'tar')[0][0]
         i_agent_collision = np.where(agent == 'ego')[0][0]
 
         # Create an array of indices for other agents, excluding the target and ego agents
         other_agents = np.arange(Y.shape[1])
-        other_agents = np.delete(other_agents, [i_agent_perturbed, i_agent_collision])
+        other_agents = np.delete(
+            other_agents, [i_agent_perturbed, i_agent_collision])
 
         # Construct a new order for agents: target, ego, followed by the rest
-        agent_order = np.array([i_agent_perturbed, i_agent_collision, *other_agents])
+        agent_order = np.array(
+            [i_agent_perturbed, i_agent_collision, *other_agents])
 
         # Rearrange the X and Y arrays according to the new agent order
         X = X[:, agent_order, :, :]
         Y = Y[:, agent_order, :, :]
 
         return X, Y, agent_order
-    
+
     @staticmethod
     def convert_to_tensor(device, *args):
         """
@@ -240,7 +243,7 @@ class Helper:
         for arg in args:
             converted_tensors.append(Helper.to_cuda_tensor(arg, device))
         return converted_tensors
-    
+
     def convert_to_numpy_array(*args):
         """
         Converts multiple inputs to numpy arrays.
@@ -253,8 +256,8 @@ class Helper:
         """
         numpy_array = [np.array(arg) for arg in args]
         return numpy_array
-    
-    def set_device(device,*args):
+
+    def set_device(device, *args):
         """
         Moves multiple tensors to the specified device.
 
@@ -267,9 +270,9 @@ class Helper:
         """
         tensor = [arg.to(device=device) for arg in args]
         return tensor
-        
+
     @staticmethod
-    def to_cuda_tensor(data,device):
+    def to_cuda_tensor(data, device):
         """
         Converts the input data to a tensor and moves it to the specified device.
 
@@ -281,7 +284,7 @@ class Helper:
             torch.Tensor: The converted tensor on the specified device.
         """
         return torch.from_numpy(data).to(dtype=torch.float32, device=device)
-    
+
     @staticmethod
     def detach_tensor(*args):
         """
@@ -295,29 +298,29 @@ class Helper:
         """
         detached_tensor = [arg.detach().cpu().numpy() for arg in args]
         return detached_tensor
-    
+
     @staticmethod
     def relative_clamping(control_action, epsilon_acc_relative, epsilon_curv_relative):
         # Clamp the control actions relative to ground truth (Not finished yet)
         tensor_addition = torch.zeros_like(control_action)
-        tensor_addition[:,:,:,0] = epsilon_acc_relative
-        tensor_addition[:,:,:,1] = epsilon_curv_relative
+        tensor_addition[:, :, :, 0] = epsilon_acc_relative
+        tensor_addition[:, :, :, 1] = epsilon_curv_relative
 
         # JULIAN: Those function need to be done for the relative clamping
         control_actions_clamp_low = control_action - tensor_addition
         control_actions_clamp_high = control_action + tensor_addition
 
         return control_actions_clamp_low, control_actions_clamp_high
-    
+
     @staticmethod
-    def convert_data(data,index_batch,index_agent,prediction):
+    def convert_data(data, index_batch, index_agent, prediction):
         if prediction:
-            data = np.mean(data,axis=1)
+            data = np.mean(data, axis=1)
             return np.expand_dims(np.expand_dims(data[index_batch, :, :], axis=0), axis=0)
-        else: 
+        else:
             return np.expand_dims(np.expand_dims(data[index_batch, index_agent, :, :], axis=0), axis=0)
-    
-    def check_size_list(list_1,list_2):
+
+    def check_size_list(list_1, list_2):
         """
         Checks if two lists have the same size.
 
@@ -328,8 +331,9 @@ class Helper:
         Raises:
             AssertionError: If the two lists do not have the same size.
         """
-        assert len(list_1) == len(list_2), "The two lists must have the same size."
-    
+        assert len(list_1) == len(
+            list_2), "The two lists must have the same size."
+
     @staticmethod
     def is_monotonic(data):
         """
@@ -341,15 +345,13 @@ class Helper:
         Returns:
             np.ndarray: A boolean array indicating if the data is monotonic for each sub-array.
         """
-        # Check for monotonic increasing 
+        # Check for monotonic increasing
         is_increasing = Helper.is_increasing(data)
-        # Check for monotonic decreasing 
+        # Check for monotonic decreasing
         is_decreasing = Helper.is_decreasing(data)
-        
+
         # Combine the results to get the final monotonicity status for each sub-array in dim 1
         return np.logical_or(is_increasing, is_decreasing)
-    
-    
 
     @staticmethod
     def is_increasing(data):
@@ -363,7 +365,7 @@ class Helper:
             np.ndarray: A boolean array indicating if the data is increasing for each sub-array.
         """
         return np.all(data[:, :, :-1, 0] <= data[:, :, 1:, 0], axis=-1)
-    
+
     @staticmethod
     def is_decreasing(data):
         """
@@ -376,7 +378,7 @@ class Helper:
             np.ndarray: A boolean array indicating if the data is decreasing for each sub-array.
         """
         return np.all(data[:, :, :-1, 0] >= data[:, :, 1:, 0], axis=-1)
-    
+
     @staticmethod
     def return_data(adv_position, X, Y, future_action):
         """
@@ -394,10 +396,62 @@ class Helper:
                    - Y_new (torch.Tensor): The updated adversarial Y tensor.
         """
         if future_action:
-            X_new, Y_new = torch.split(adv_position, [X.shape[2], Y.shape[2]], dim=-2)
-        else: 
+            X_new, Y_new = torch.split(
+                adv_position, [X.shape[2], Y.shape[2]], dim=-2)
+        else:
             X_new = adv_position
             Y_new = Y
 
         return X_new, Y_new
-    
+
+    @staticmethod
+    def remove_indices(data, mask):
+        """
+        Removes indices from the data where the mask is fully true.
+
+        Args:
+            data (torch.Tensor): The data tensor to filter.
+            mask (torch.Tensor): The mask tensor indicating which data to remove.
+
+        Returns:
+            tuple: A tuple containing:
+                   - indices_to_remove (list): The list of indices that were removed.
+                   - data_filtered (torch.Tensor or None): The filtered data tensor or None if all data is removed.
+        """
+        indices_to_remove = []
+        for i in range(data.shape[0]):
+            if torch.all(mask[i, 0, :, :] == True):
+                indices_to_remove.append(i)
+
+        if len(indices_to_remove) == data.shape[0]:
+            data_filtered = None
+        elif len(indices_to_remove) == data.shape[0]-1:
+            data_filtered = data[indices_to_remove[0]:indices_to_remove[0]+1]
+        else:
+            data_filtered = torch.cat(
+                [data[i:i+1] for i in range(data.shape[0]) if i not in indices_to_remove], dim=0)
+
+        return indices_to_remove, data_filtered
+
+    @staticmethod
+    def add_back_indices(data_old, data_new, indices_to_remove):
+        """
+        Adds back the removed indices to the new data tensor.
+
+        Args:
+            data_old (torch.Tensor): The original data tensor before removal.
+            data_new (torch.Tensor): The new data tensor after some indices were removed.
+            indices_to_remove (list): The list of indices that were removed.
+
+        Returns:
+            torch.Tensor: The data tensor with removed indices added back.
+        """
+        new_data = torch.zeros_like(data_old)
+        j = 0
+        for i in range(data_old.shape[0]):
+            if i in indices_to_remove:
+                new_data[i] = data_old[i:i+1]
+            else:
+                new_data[i] = data_new[j:j+1]
+                j += 1
+        return new_data
