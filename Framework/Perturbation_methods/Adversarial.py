@@ -145,6 +145,9 @@ class Adversarial(perturbation_template):
         # Setting animated scene
         self.control_action_graph = True
 
+        # Image neural network
+        self.image_neural_network = False
+
         # Car size
         self.car_length = 4.1
         self.car_width = 1.7
@@ -336,6 +339,24 @@ class Adversarial(perturbation_template):
         return X_new_pert, Y_new_pert
 
     def _ploting_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, loss_store, control_action, perturbation):
+        """
+        Handles the plotting for the left-turns dataset.
+
+        Parameters:
+        X (array-like): The ground truth observed position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        X_new (array-like): The modified observed position tensor after applying perturbations.
+        Y (array-like): The ground truth future position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        Y_new (array-like): The modified future position tensor after applying perturbations.
+        Y_Pred (array-like): The predicted future position tensor.
+        Y_Pred_iter_1 (array-like): The initial prediction of future positions.
+        data_barrier (array-like): Concatenated tensor of observed and future positions for barrier function.
+        loss_store (array-like): Storage of loss values over iterations.
+        control_action (array-like): The original control actions for the agents.
+        perturbation (array-like): The perturbations applied to the control actions.
+
+        Returns:
+        None
+        """
         # Initialize the plot class
         plot = Plot(self)
 
@@ -364,6 +385,21 @@ class Adversarial(perturbation_template):
                                 X_smoothed=self.X_smoothed, X_smoothed_adv=self.X_smoothed_adv, Y_pred_smoothed=self.Y_pred_smoothed, Y_pred_smoothed_adv=self.Y_pred_smoothed_adv)
 
     def _loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier):
+        """
+        Calculates the loss for the given input data, predictions, and barrier data.
+
+        Parameters:
+        X (array-like): The ground truth observed position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        X_new (array-like): The modified observed position tensor after applying perturbations.
+        Y (array-like): The ground truth future position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        Y_new (array-like): The modified future position tensor after applying perturbations.
+        Y_Pred (array-like): The predicted future position tensor.
+        Y_Pred_iter_1 (array-like): The initial prediction of future positions.
+        data_barrier (array-like): Concatenated tensor of observed and future positions for barrier function.
+
+        Returns:
+        losses (array-like): Calculated loss values based on the input data and predictions.
+        """
         # calculate the loss
         losses = Loss.calculate_loss(self,
                                      X=X,
@@ -378,6 +414,24 @@ class Adversarial(perturbation_template):
         return losses
 
     def _smoothing_module(self, X, Y, control_action, perturbation, adv_position, velocity, heading):
+        """
+        Applies a smoothing module to the input data to perform randomized smoothing on control actions.
+
+        Parameters:
+        X (array-like): The ground truth observed position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        Y (array-like): The ground truth future position tensor with array shape (batch size, number agents, number time steps future, coordinates (x,y)).
+        control_action (array-like): The original control actions for the agents.
+        perturbation (array-like): The perturbations applied to the control actions.
+        adv_position (array-like): The adversarial positions for the agents.
+        velocity (array-like): The velocities of the agents at all time steps
+        heading (array-like): The headings (directions) of the agents at all time steps.
+
+        Returns:
+        X_smoothed (array-like): Smoothed observed position tensor.
+        X_smoothed_adv (array-like): Smoothed adversarial observed position tensor.
+        Y_pred_smoothed (array-like): Smoothed future position predictions.
+        Y_pred_smoothed_adv (array-like): Smoothed adversarial future position predictions.
+        """
         # initialize smoothing
         smoothing = Smoothing(self,
                               control_action=control_action,
@@ -395,12 +449,33 @@ class Adversarial(perturbation_template):
         return X_smoothed, X_smoothed_adv, Y_pred_smoothed, Y_pred_smoothed_adv
 
     def _assertion_check(self):
+        """
+        Performs assertion checks to validate the consistency of certain attributes.
+
+        This method checks:
+        - If the size of the `sigma_acceleration` and `sigma_curvature` lists are the same.
+        - If the settings for `smoothing` and `plot_smoothing` are valid and ordered correctly.
+
+        Returns:
+        None
+        """
         # check if the size of both sigmas are the same
         Helper.check_size_list(self.sigma_acceleration, self.sigma_curvature)
 
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
 
     def _load_images(self, X, Domain):
+        """
+        Loads images required for neural netwrok on the given observed positions and domain information.
+
+        Parameters:
+        X (array-like): The ground truth observed position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        Domain (DataFrame): A DataFrame containing domain-specific information related to the agents.
+
+        Returns:
+        img (array-like): Loaded images in the required format and dimensions.
+        img_m_per_px (array-like): Meter-per-pixel values for the images.
+        """
         Img_needed = np.zeros(X.shape[:2], bool)
         Img_needed[:, 0] = True
 
@@ -433,6 +508,23 @@ class Adversarial(perturbation_template):
         return img, img_m_per_px
 
     def _prepare_data(self, X, Y, T, agent, Domain):
+        """
+        Prepares data for further processing by removing NaN values,
+        flipping dimensions of the agent data, and storing relevant
+        attributes.
+
+        Parameters:
+        X (array-like): The ground truth observed postition tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y))
+        Y (array-like): The ground truth future postition tensor with array shape (batch size, number agents, number time steps future, coordinates (x,y))
+        T (int): Type of agent observed.
+        agent (object): It includes strings with the names of the agents.
+        Domain (object): A domain object specifying the context of the agents
+
+        Returns:
+        X (array-like): Processed observed feature matrix.
+        Y (array-like): Processed future feature matrix.
+        """
+        
         # Remove nan from input and remember old shape
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
@@ -447,6 +539,22 @@ class Adversarial(perturbation_template):
         return X, Y
 
     def _prepare_data_attack(self, X, Y):
+        """
+        Prepares data for an adversarial attack by converting inputs to tensors,
+        creating data to perturb, and initializing necessary attributes for
+        further processing.
+
+        Parameters:
+        X (array-like): The ground truth observed position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+        Y (array-like): The ground truth future position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+
+        Returns:
+        X (tensor): Converted observed feature tensor.
+        Y (tensor): Converted future feature tensor.
+        positions_perturb (tensor): Tensor containing positions to perturb.
+        Y_Pred_iter_1 (tensor): Storage for the adversarial prediction on nominal setting.
+        data_barrier (tensor): Concatenated tensor of observed and future positions for barrier function.
+        """
         # Convert to tensor
         X, Y = Helper.convert_to_tensor(self.pert_model.device, X, Y)
 
@@ -459,13 +567,14 @@ class Adversarial(perturbation_template):
 
         self.mask_data = Helper.compute_mask_values_tensor(positions_perturb)
 
-        # Load images for adversarial attack
+        # Load images for adversarial attack (change when using image)
         # img, img_m_per_px = self._load_images(X,Domain)
         self.img, self.img_m_per_px = None, None
 
         # Show image
-        # plot_img = Image.fromarray(img[0,0,:],'RGB')
-        # plot_img.show()
+        if self.image_neural_network:
+            plot_img = Image.fromarray(self.img[0,0,:],'RGB')
+            plot_img.show()
 
         # Create storage for the adversarial prediction on nominal setting
         Y_Pred_iter_1 = torch.zeros(
