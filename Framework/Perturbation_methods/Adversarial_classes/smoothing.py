@@ -7,7 +7,7 @@ from Adversarial_classes.helper import Helper
 
 
 class Smoothing:
-    def __init__(self, adversarial, control_action, control_action_perturbed, adv_position, velocity, heading, X, Y):
+    def __init__(self, adversarial, adv_position, X, Y, control_action = None, control_action_perturbed = None, velocity = None , heading = None):
         # check smoothing
         self.smoothing = adversarial.smoothing
 
@@ -37,14 +37,24 @@ class Smoothing:
         self.num_samples_smoothing = adversarial.num_samples_used_smoothing
 
         # smoothing sigmas
-        self.sigma_acceleration = adversarial.sigma_acceleration
-        self.sigma_curvature = adversarial.sigma_curvature
+        try:
+            self.sigma_acceleration = adversarial.sigma_acceleration
+            self.sigma_curvature = adversarial.sigma_curvature
+            self.smoothing_strategy = 'Control_Action'
+            self.sigma_count = len(self.sigma_acceleration)
+        except:
+            self.sigma = adversarial.sigma
+            self.smoothing_strategy = 'Position'
+            self.sigma_count = len(self.sigma)
 
         # clamping values
-        self.epsilon_acc_absolute = adversarial.epsilon_acc_absolute
-        self.epsilon_curv_absolute = adversarial.epsilon_curv_absolute
-        self.epsilon_acc_relative = adversarial.epsilon_acc_relative
-        self.epsilon_curv_relative = adversarial.epsilon_curv_relative
+        try:
+            self.epsilon_acc_absolute = adversarial.epsilon_acc_absolute
+            self.epsilon_curv_absolute = adversarial.epsilon_curv_absolute
+            self.epsilon_acc_relative = adversarial.epsilon_acc_relative
+            self.epsilon_curv_relative = adversarial.epsilon_curv_relative
+        except:
+            pass
 
         # prediction model settings
         self.pert_model = adversarial.pert_model
@@ -54,8 +64,6 @@ class Smoothing:
         self.img_m_per_px = adversarial.img_m_per_px
         self.num_steps = adversarial.num_steps_predict
                             
-                              
-
     def randomized_smoothing(self):
         """
         Applies randomized adversarial smoothing and returns the smoothed data.
@@ -73,16 +81,16 @@ class Smoothing:
         if self.smoothing is False:
             return None, None, None, None
 
-         # Storage for the inputs with gaussian noise
-        X_smoothed = [[] for _ in self.sigma_curvature]
-        X_smoothed_adv = [[] for _ in self.sigma_curvature]
+        # Storage for the inputs with gaussian noise
+        X_smoothed = [[] for _ in range(self.sigma_count)]
+        X_smoothed_adv = [[] for _ in range(self.sigma_count)]
 
         # Storage for the outputs
-        Y_pred_smoothed = [[] for _ in self.sigma_curvature]
-        Y_pred_smoothed_adv = [[] for _ in self.sigma_curvature]
+        Y_pred_smoothed = [[] for _ in range(self.sigma_count)]
+        Y_pred_smoothed_adv = [[] for _ in range(self.sigma_count)]
 
         # Apply randomized adversarial smoothing
-        for index_sigma in range(len(self.sigma_acceleration)):
+        for index_sigma in range(self.sigma_count):
             for _ in range(self.num_samples_smoothing):
                 # smooth unperturbed data
                 smoothed_X, Y_Pred_smoothed = self.forward_pass_smoothing(
@@ -121,7 +129,10 @@ class Smoothing:
         """
 
         # Add noise to the target agent
-        data_noised = self.add_noise_control_actions(index_sigma, perturbed)
+        if self.smoothing_strategy == 'Control_Action':
+            data_noised = self.add_noise_control_actions(index_sigma, perturbed)
+        elif self.smoothing_strategy == 'Position':
+            data_noised = self.add_noise_position(index_sigma, perturbed)
 
         # Make the prediction and calculate the expectation
         Y_Pred_smoothed = self.pert_model.predict_batch_tensor(X=data_noised,
@@ -138,6 +149,39 @@ class Smoothing:
             Y_Pred_smoothed.detach().cpu().numpy(), axis=1)
 
         return data_noised, Y_Pred_smoothed
+    
+    def add_noise_position(self, index_sigma, perturbed):
+        """
+        Adds Gaussian noise to the positions.
+
+        Args:
+            index_sigma (int): Index to select the appropriate sigma values for noise.
+            perturbed (bool): Flag to determine if the perturbed control actions should be used.
+
+        Returns:
+            torch.Tensor: The data after adding noise to the control actions.
+        """
+        # Gather gaussian noise for randomized smoothign
+        if perturbed:
+            position_data = self.data
+        else:
+            position_data = self.X
+
+        noise_data = torch.randn_like(position_data)
+
+        # Multiply the noise with the predefined sigmas
+        noise_data.mul_(self.sigma[index_sigma])
+
+        # Remove noise from ego agent
+        noise_data[:, 1:] = 0.0
+
+        # return the noised data
+        data_noised = position_data + noise_data
+
+        data_noised, _ = Helper.return_data(
+            data_noised, self.X, self.Y, self.future_action)
+        
+        return data_noised
 
     def add_noise_control_actions(self, index_sigma, perturbed):
         """

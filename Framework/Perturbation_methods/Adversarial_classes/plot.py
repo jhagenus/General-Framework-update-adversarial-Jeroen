@@ -19,7 +19,10 @@ class Plot:
         self.dt = adversarial.dt
 
         # plotting setting
-        self.control_action_graph = adversarial.control_action_graph
+        try:
+            self.control_action_graph = adversarial.control_action_graph
+        except:
+            self.control_action_graph = False
 
         # device
         self.device = adversarial.pert_model.device
@@ -29,15 +32,24 @@ class Plot:
         self.ego_agent = adversarial.ego_agent_index
 
         # Clamping values
-        self.epsilon_acc_relative = adversarial.epsilon_acc_relative
-        self.epsilon_curv_relative = adversarial.epsilon_curv_relative
-
-        self.epsilon_acc_absolute = adversarial.epsilon_acc_absolute
-        self.epsilon_curv_absolute = adversarial.epsilon_curv_absolute
+        try:
+            self.epsilon_acc_absolute = adversarial.epsilon_acc_absolute
+            self.epsilon_curv_absolute = adversarial.epsilon_curv_absolute
+            self.epsilon_acc_relative = adversarial.epsilon_acc_relative
+            self.epsilon_curv_relative = adversarial.epsilon_curv_relative
+        except:
+            pass
 
         # smoothing sigmas
-        self.sigma_acceleration = adversarial.sigma_acceleration
-        self.sigma_curvature = adversarial.sigma_curvature
+        try:
+            self.sigma_acceleration = adversarial.sigma_acceleration
+            self.sigma_curvature = adversarial.sigma_curvature
+            self.sigma_count = len(self.sigma_acceleration)
+            self.smoothing_strategy = 'Control_Action'   
+        except:
+            self.sigma = adversarial.sigma
+            self.sigma_count = len(self.sigma)
+            self.smoothing_strategy = 'Position'
 
         # animation interpolation
         self.interpolation = 4
@@ -95,7 +107,7 @@ class Plot:
         plt.grid(True)
         plt.show()
 
-    def plot_animated_adv_scene(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, control_action, perturbed_control_action):
+    def plot_animated_adv_scene(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, control_action = None, perturbed_control_action = None):
         for index_batch in range(X.shape[0]):
             # Set the length of the interpolation
             self.number_interpolation = (
@@ -104,6 +116,10 @@ class Plot:
             # Interpolate the data to smooth the animation
             self.create_interpolated_data_animation(
                 X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, index_batch)
+            
+            # Create the number count same lenght as interpolation
+            self.num_count = np.arange(
+                0, self.number_interpolation, 1)
 
             # Setup the subplots
             if self.control_action_graph:
@@ -131,7 +147,11 @@ class Plot:
                                    30, max_value_y=10, title='Animation of the adversarial scene', legend=True)
 
             # Create the animation
-            ani = animation.FuncAnimation(fig, self.update, self.interpolated_data_tar_agent.shape[2]-1, fargs=[self.num_count, self.tar_agent_control_actions, self.adv_agent_control_actions, index_batch],
+            if self.control_action_graph:
+                ani = animation.FuncAnimation(fig, self.update, self.number_interpolation-1, fargs=[self.num_count, self.tar_agent_control_actions, self.adv_agent_control_actions, index_batch],
+                                          interval=self.dt_new*1000, blit=False)
+            else:
+                ani = animation.FuncAnimation(fig, self.update, self.number_interpolation-1, fargs=[self.num_count, index_batch],
                                           interval=self.dt_new*1000, blit=False)
 
             # setup the zoom figure
@@ -171,11 +191,15 @@ class Plot:
         # Plot the randomized smoothing
         for index_batch in range(X.shape[0]):
             # loop over the sigmas
-            for index_sigma in range(len(self.sigma_acceleration)):
+            for index_sigma in range(self.sigma_count):
                 # Setup smoohting plot
-                fig, ax, ax1, ax2 = self.subplot_setup(
-                    index_batch=index_batch, title=f'Example {index_batch} of batch, sigma acceleration: {self.sigma_acceleration[index_sigma]}, sigma curvature: {self.sigma_curvature[index_sigma]} - Randomized smoothing plot', scene='smoothing')
-
+                if self.smoothing_strategy == 'Control_Action':
+                    fig, ax, ax1, ax2 = self.subplot_setup(
+                        index_batch=index_batch, title=f'Example {index_batch} of batch, sigma acceleration: {self.sigma_acceleration[index_sigma]}, sigma curvature: {self.sigma_curvature[index_sigma]} - Randomized smoothing plot', scene='smoothing')
+                else:
+                    fig, ax, ax1, ax2 = self.subplot_setup(
+                        index_batch=index_batch, title=f'Example {index_batch} of batch, sigma: {self.sigma[index_sigma]} - Randomized smoothing plot', scene='smoothing')
+                    
                 # Plot 1: Plot the smoothed nominal scene
                 for index_agent in range(X.shape[1]):
                     self.plot_ego_and_tar_agent(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1, figure_input=ax,
@@ -398,7 +422,7 @@ class Plot:
             self.rectangles_tar_adv = self.add_rectangles(animation_ax, [
                                                           self.interpolated_data_adv_Pred], 'red', r'Adversarial prediction ($\tilde{X}_{tar}$ and $\hat{\tilde{Y}}_{tar}$)', self.car_length, self.car_width, alpha=1)
 
-    def update(self, num, num_count, tar_agent_control_actions, adv_agent_control_actions, index_batch):
+    def update(self, num, num_count, index_batch, tar_agent_control_actions = None, adv_agent_control_actions = None):
         # Update the location of the car
         self.update_box_position([self.interpolated_data_pred_iter_1[0, self.tar_agent, :, :]],
                                  self.rectangles_tar_pred, self.car_length, self.car_width, num)

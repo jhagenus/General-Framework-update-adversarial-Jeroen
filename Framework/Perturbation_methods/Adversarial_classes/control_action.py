@@ -5,12 +5,13 @@ from Adversarial_classes.helper import Helper
 
 class Control_action:
     @staticmethod
-    def inverse_Dynamical_Model(positions_perturb, dt, device):
+    def inverse_Dynamical_Model(positions_perturb, mask_data, dt, device):
         """
         Computes the control actions, heading, and velocity of agents in a perturbed positions dataset.
 
         Args:
             positions_perturb (torch.Tensor): A 4-dimensional tensor of shape (batch size, number agents, number time_steps, coordinates (x,y)).
+            data_concatenate (torch.Tensor): A 4-dimensional tensor of shape (batch size, number agents, number time_steps X and Y, coordinates (x,y)).
             dt (float): The time difference between consecutive time steps.
             device (torch.device): The device on which to perform the computations (e.g., 'cpu' or 'cuda').
 
@@ -26,8 +27,8 @@ class Control_action:
             (positions_perturb.shape[0], positions_perturb.shape[1], positions_perturb.shape[2]-1, positions_perturb.shape[3])).to(device)
 
         # Compute the mask values for agents standing still
-        mask = Helper.compute_mask_values_tensor(positions_perturb)
-        mask = mask[:, :, :-1, :].to(device)
+        mask_length = positions_perturb.shape[2] - 1
+        mask = mask_data[:, :, :mask_length, :].to(device)
 
         # Initialize heading and velocity
         heading = torch.zeros(positions_perturb.shape[:3]).to(device)

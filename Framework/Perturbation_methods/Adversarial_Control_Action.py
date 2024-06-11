@@ -11,12 +11,11 @@ from Adversarial_classes.helper import Helper
 from Adversarial_classes.loss import Loss
 from Adversarial_classes.plot import Plot
 from Adversarial_classes.smoothing import Smoothing
-from Adversarial_classes.spline import Spline
 
 from PIL import Image
 
 
-class Adversarial(perturbation_template):
+class Adversarial_Control_Action(perturbation_template):
     def check_and_extract_kwargs(self, kwargs):
         '''
         This function checks if the input dictionary is complete and extracts the required values.
@@ -181,7 +180,7 @@ class Adversarial(perturbation_template):
         self.loss_function = 'Fake_collision_GT'
 
         # For barrier function select: 'Log', 'Log_V2' or None
-        self.barrier_function = 'Log_V2'
+        self.barrier_function = 'Log'
 
         # Barrier function parameters
         self.distance_threshold = 1
@@ -228,9 +227,6 @@ class Adversarial(perturbation_template):
             If an agent is fully or at some timesteps partially not observed, then this can include np.nan values. 
         '''
 
-        # Debug mode
-        # torch.autograd.set_detect_anomaly(True)
-
         # Prepare the data (ordering/spline/edge_cases)
         X, Y = self._prepare_data(X, Y, T, agent, Domain)
 
@@ -240,7 +236,7 @@ class Adversarial(perturbation_template):
 
         # Calculate initial control actions
         control_action, heading, velocity = Control_action.inverse_Dynamical_Model(
-            positions_perturb=positions_perturb, dt=self.dt, device=self.pert_model.device)
+            positions_perturb=positions_perturb, mask_data=self.mask_data, dt=self.dt, device=self.pert_model.device)
 
         # Create a tensor for the perturbation
         perturbation = torch.zeros_like(control_action)
@@ -299,7 +295,8 @@ class Adversarial(perturbation_template):
                     -self.epsilon_curv_absolute, self.epsilon_curv_absolute)
 
                 perturbation.copy_(control_action_perturbed - control_action)
-                #perturbation + controlaction
+
+                # set perturbations of ego agent to zero
                 perturbation[:, 1:] = 0.0
 
             # Update the step size
@@ -434,13 +431,13 @@ class Adversarial(perturbation_template):
         """
         # initialize smoothing
         smoothing = Smoothing(self,
+                              X=X,
+                              Y=Y,
                               control_action=control_action,
                               control_action_perturbed=control_action+perturbation,
                               adv_position=adv_position,
                               velocity=velocity,
-                              heading=heading,
-                              X=X,
-                              Y=Y
+                              heading=heading
                               )
 
         # Randomized smoothing
@@ -565,7 +562,7 @@ class Adversarial(perturbation_template):
         # data for barrier function
         data_barrier = torch.cat((X, Y), dim=2)
 
-        self.mask_data = Helper.compute_mask_values_tensor(positions_perturb)
+        self.mask_data = Helper.compute_mask_values_tensor(torch.cat((X, Y), dim=-2))
 
         # Load images for adversarial attack (change when using image)
         # img, img_m_per_px = self._load_images(X,Domain)

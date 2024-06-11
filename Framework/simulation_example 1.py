@@ -8,7 +8,7 @@ new_experiment = Experiment(Experiment_name)
 
 #%% Select modules
 # Select the datasets
-Data_sets = [[{'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': [], 'perturbation': {'attack': 'Adversarial',
+Data_sets = [[{'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': [], 'perturbation': {'attack': 'Adversarial_Position',
                                                                                                                                         'data_set_dict': {'scenario': 'CoR_left_turns', 'max_num_agents': None, 't0_type': 'col_set', 'conforming_t0_types': []},
                                                                                                                                         'data_param': {'dt': 0.1, 'num_timesteps_in': (12,12), 'num_timesteps_out': (12, 12)},
                                                                                                                                         'splitter_dict': {'Type': 'no_split', 'repetition': [0], 'test_part': 0.2},

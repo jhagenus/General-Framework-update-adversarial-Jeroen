@@ -147,6 +147,7 @@ class Helper:
         """
         # Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
         mask = np.abs(array[:, :, 0, :] - array[:, :, -1, :]) < 0.2
+
         # Broadcast the mask to match the shape of the input tensor
         mask = np.expand_dims(mask, axis=2)
         mask = np.broadcast_to(mask, array.shape)
@@ -169,7 +170,7 @@ class Helper:
         Returns:
         torch.Tensor: The mask tensor with the condition applied and broadcasted to match the input shape.
         """
-        # Compute the mask where the difference between the first and last elements in the third dimension is less than 0.2
+        # Compute the mask where the difference between the first and last elements in the third dimension is less than 5
         mask = torch.abs(tensor[:, :, 0, :] - tensor[:, :, -1, :]) < 5
         # Broadcast the mask to match the shape of the input tensor
         mask = mask[:, :, None, :].expand_as(tensor)
@@ -247,6 +248,7 @@ class Helper:
             converted_tensors.append(Helper.to_cuda_tensor(arg, device))
         return converted_tensors
 
+    @staticmethod
     def convert_to_numpy_array(*args):
         """
         Converts multiple inputs to numpy arrays.
@@ -260,6 +262,7 @@ class Helper:
         numpy_array = [np.array(arg) for arg in args]
         return numpy_array
 
+    @staticmethod
     def set_device(device, *args):
         """
         Moves multiple tensors to the specified device.
@@ -323,6 +326,7 @@ class Helper:
         else:
             return np.expand_dims(np.expand_dims(data[index_batch, index_agent, :, :], axis=0), axis=0)
 
+    @staticmethod
     def check_size_list(list_1, list_2):
         """
         Checks if two lists have the same size.
