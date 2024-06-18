@@ -148,7 +148,7 @@ class Plot:
 
             # Create the animation
             if self.control_action_graph:
-                ani = animation.FuncAnimation(fig, self.update, self.number_interpolation-1, fargs=[self.num_count, self.tar_agent_control_actions, self.adv_agent_control_actions, index_batch],
+                ani = animation.FuncAnimation(fig, self.update, self.number_interpolation-1, fargs=[self.num_count, index_batch, self.tar_agent_control_actions, self.adv_agent_control_actions],
                                           interval=self.dt_new*1000, blit=False)
             else:
                 ani = animation.FuncAnimation(fig, self.update, self.number_interpolation-1, fargs=[self.num_count, index_batch],

@@ -129,17 +129,17 @@ class Adversarial_Control_Action(perturbation_template):
 
     def initialize_settings(self):
         # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = True
+        self.plot_input = False
 
         # Spline settings
         self.total_spline_values = 100
 
         # Plot the loss over the iterations
-        self.plot_loss = True
+        self.plot_loss = False
 
         # Plot the adversarial scene
-        self.static_adv_scene = True
-        self.animated_adv_scene = True
+        self.static_adv_scene = False
+        self.animated_adv_scene = False
 
         # Setting animated scene
         self.control_action_graph = True
@@ -153,8 +153,8 @@ class Adversarial_Control_Action(perturbation_template):
         self.wheelbase = 2.7
 
         # Initialize parameters
-        self.num_samples = 5  # Defined as (K) in our paper
-        self.max_number_iterations = 5
+        self.num_samples = 20  # Defined as (K) in our paper
+        self.max_number_iterations = 25
 
         # absolute clamping values
         self.epsilon_acc_absolute = 6
@@ -166,20 +166,25 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Learning decay
         self.gamma = 1
-        self.alpha = 0.001
+        self.alpha = 0.01 # 0.01 no issue nan values
+
+        # Learning rate adjusted
+        self.alpha_acc = (self.epsilon_acc_relative / self.epsilon_curv_relative) * self.alpha
+        self.alpha_curv = self.alpha
 
         # Randomized smoothing
-        self.smoothing = True
+        self.smoothing = False
         self.num_samples_used_smoothing = 15  # Defined as .. in paper
         self.sigma_acceleration = [0.05, 0.1]
         self.sigma_curvature = [0.01, 0.05]
-        self.plot_smoothing = True
+        self.plot_smoothing = False
 
-        # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
+        # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred', 'ADE_new_GT_Log', 'ADE_new_pred_Log', 'ADE_new_GT_Log_V2', 'ADE_new_pred_Log_V2'
+        # For FDE attack select: 'FDE', 'FDE_new_GT', 'FDE_new_pred', 'FDE_new_GT_Log', 'FDE_new_pred_Log', 'FDE_new_GT_Log_V2', 'FDE_new_pred_Log_V2'
         # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
-        self.loss_function = 'Fake_collision_GT'
+        self.loss_function = 'ADE'
 
-        # For barrier function select: 'Log', 'Log_V2' or None
+        # For barrier function (observed states) select: 'Log', 'Log_V2' or None
         self.barrier_function = 'Log'
 
         # Barrier function parameters
@@ -192,7 +197,7 @@ class Adversarial_Control_Action(perturbation_template):
         # Do a assertion check on settings
         self._assertion_check()
 
-    def perturb_batch(self, X, Y, T, agent, Domain):
+    def perturb_batch(self, X, Y, T, agent, Domain, physical_constraints):
         '''
         This function takes a batch of data and generates perturbations.
 
@@ -282,7 +287,8 @@ class Adversarial_Control_Action(perturbation_template):
 
             # Update Control inputs
             with torch.no_grad():
-                perturbation.subtract_(grad, alpha=self.alpha)
+                perturbation[:, :, :,0].subtract_(grad[:, :, :,0], alpha=self.alpha_acc)
+                perturbation[:, :, :,1].subtract_(grad[:, :, :,1], alpha=self.alpha_curv)
                 perturbation[:, :, :,
                              0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
                 perturbation[:, :, :, 1].clamp_(
@@ -594,7 +600,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         '''
 
-        self.batch_size = 1
+        self.batch_size = 2
 
     def requirerments(self):
         '''

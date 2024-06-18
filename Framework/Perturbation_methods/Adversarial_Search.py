@@ -10,7 +10,7 @@ from Adversarial_classes.helper import Helper
 from Adversarial_classes.loss import Loss
 from Adversarial_classes.plot import Plot
 from Adversarial_classes.smoothing import Smoothing
-from Adversarial_classes.search_numpy import Search
+from Adversarial_classes.search import Search
 
 from PIL import Image
 
