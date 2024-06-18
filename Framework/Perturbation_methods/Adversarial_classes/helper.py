@@ -230,6 +230,24 @@ class Helper:
         ego_index = 1
 
         return X, Y, agent_order, tar_index, ego_index
+    
+
+    def get_dimensions_physical_bounds(constraints, agent_order):
+        """
+        Reorders the constraints dictionary based on the agent order.
+
+        Args:
+            constraints (dict): A dictionary where each value is a 1-dimensional array with the same length as the number of agents.
+            agent_order (np.ndarray): The new order of agents.
+
+        Returns:
+            dict: A dictionary with reordered constraints.
+        """
+        reordered_constraints = {}
+        for key, value in constraints.items():
+            reordered_constraints[key] = value[agent_order]
+        return reordered_constraints
+
 
     @staticmethod
     def convert_to_tensor(device, *args):

@@ -4,9 +4,13 @@ import importlib
 from Data_sets.data_interface import data_interface
 import random
 
+from Adversarial_classes.search_numpy import Search
+
 class perturbation_template():
     def __init__(self, kwargs):
         self.check_and_extract_kwargs(kwargs)
+
+        self.kwargs = kwargs   
 
         # Get the attack type
         self.attack = self.__class__.__name__
@@ -88,6 +92,10 @@ class perturbation_template():
         X_pert_sort = np.copy(X_sort)
         Y_pert_sort = np.copy(Y_sort)
 
+        dt = self.kwargs['data_param']['dt']
+
+        constraints = Search.get_physical_constraints(X_pert_sort, Y_pert_sort, dt)
+
         # Go through the data 
         num_batches = int(np.ceil(X.shape[0] / self.batch_size))
         for i_batch in range(num_batches):
@@ -97,10 +105,10 @@ class perturbation_template():
             samples = np.arange(i_start, i_end)
             
 
-            if N_O_sort[samples].min() not in [18]:
+            if N_O_sort[samples].min() not in [14]:
                 continue
             
-            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples])
+            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples], constraints)
 
 
         sort_indices_inverse = np.argsort(sorted_indices)

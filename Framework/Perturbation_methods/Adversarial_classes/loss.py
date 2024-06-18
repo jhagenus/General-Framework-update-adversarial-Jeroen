@@ -263,6 +263,8 @@ class get_name:
             return LogBarrier(distance_threshold, log_value)
         elif barrier_function == 'Log_V2':
             return LogBarrierV2(distance_threshold, barrier_data, log_value)
+        elif barrier_function == 'None':
+            return barrier_None()
         else:
             raise ValueError(f"Unknown barrier function: {barrier_function}")
 
@@ -271,36 +273,29 @@ class ADELoss(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return -Loss.ADE_loss_Y_GT_and_Y_pred(Y, Pred_t, tar_agent)
 
-
 class ADELossNewGT(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return -Loss.ADE_loss_Y_pred_and_Y_perturb(Y_new, Pred_t, tar_agent) + Loss.ADE_loss_Y_perturb_and_Y_GT(Y_new, Y, tar_agent)
-
 
 class ADELossNewPred(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return -Loss.ADE_loss_Y_pred_and_Y_perturb(Y_new, Pred_t, tar_agent) + Loss.ADE_loss_Y_pred_iteration_1_and_Y_perturb(Y_new, Pred_iter_1, tar_agent)
 
-
 class CollisionLoss(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent)
-
 
 class FakeCollisionLossGT(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent) + Loss.ADE_loss_Y_perturb_and_Y_GT(Y_new, Y, tar_agent)
 
-
 class FakeCollisionLossPred(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_pred_tar(Y, Pred_t, ego_agent) + Loss.ADE_loss_Y_pred_iteration_1_and_Y_perturb(Y_new, Pred_iter_1, tar_agent)
 
-
 class HideCollisionLossGT(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
         return Loss.collision_loss_Y_ego_GT_and_Y_perturb_tar(Y_new, Y, tar_agent, ego_agent) + Loss.ADE_loss_Y_GT_and_Y_pred(Y, Pred_t, tar_agent)
-
 
 class HideCollisionLossPred(LossFunction):
     def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
@@ -315,7 +310,6 @@ class LogBarrier(BarrierFunction):
     def calculate_barrier(self, X_new, X, tar_agent):
         return Loss.barrier_log_function(self.distance_threshold, X_new, X, self.log_value, tar_agent)
 
-
 class LogBarrierV2(BarrierFunction):
     def __init__(self, distance_threshold, barrier_data, log_value):
         self.distance_threshold = distance_threshold
@@ -324,3 +318,7 @@ class LogBarrierV2(BarrierFunction):
 
     def calculate_barrier(self, X_new, X, tar_agent):
         return Loss.barrier_log_function_V2(self.distance_threshold, X_new, self.barrier_data, self.log_value, tar_agent)
+    
+class barrier_None(BarrierFunction):
+    def calculate_barrier(self, X_new, X, tar_agent):
+        return 0
