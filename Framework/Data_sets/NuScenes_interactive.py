@@ -67,7 +67,7 @@ class NuScenes_interactive(data_set_template):
 
         map_files = os.listdir(image_path_full)
         map_files.reverse()
-        px_per_meter = 10
+        px_per_meter = 6
         
         for map_file in map_files:
             if map_file.endswith('.json'):

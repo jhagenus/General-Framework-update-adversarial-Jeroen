@@ -151,11 +151,11 @@ class Adversarial_Search(perturbation_template):
 
         # Initialize parameters
         self.num_samples = 20  # Defined as (K) in our paper
-        self.max_number_iterations = 20
+        self.max_number_iterations = 30
 
         # Learning decay
         self.gamma = 1
-        self.alpha = 0.001
+        self.alpha = 0.2
 
         # Randomized smoothing
         self.smoothing = False
@@ -223,7 +223,7 @@ class Adversarial_Search(perturbation_template):
             X, Y)
 
         # Create a tensor for the perturbation
-        perturbation = torch.zeros_like(positions_perturb)
+        perturbation = torch.rand_like(positions_perturb).to(self.pert_model.device)
         perturbation.requires_grad = True
 
         # Store the loss for plot
@@ -234,11 +234,9 @@ class Adversarial_Search(perturbation_template):
             # Reset gradients
             perturbation.grad = None
 
-            print(perturbation)
-
             # Process the perturbations
             perturbation_new = Search.hard_constraint(positions_perturb=positions_perturb, perturbation_tensor=perturbation, ego_agent_index=self.ego_agent_index,
-                                                      tar_agent_index=self.tar_agent_index, hard_bound=self.distance_threshold, physical_bounds=self.physical_bounds, dt=self.dt)
+                                                      tar_agent_index=self.tar_agent_index, hard_bound=self.distance_threshold, physical_bounds=self.physical_bounds, dt=self.dt, device=self.pert_model.device)
 
             # Split the adversarial position back to X and Y
             X_new, Y_new = Helper.return_data(
@@ -265,8 +263,6 @@ class Adversarial_Search(perturbation_template):
             # Calulate gradients
             losses.sum().backward()
             grad = perturbation.grad
-
-            print(grad)
 
             # Update Control inputs
             with torch.no_grad():

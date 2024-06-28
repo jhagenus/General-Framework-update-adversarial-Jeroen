@@ -41,14 +41,14 @@ class CoR_left_turns(data_set_template):
         self.Domain_old = []
         agents = ['ego', 'tar']
 
-        x_center = 163.6
-        y_center = -50
+        x_center = 163.6666
+        y_center = -23.6666
         rot_angle = 0
-        px_per_meter = 10
+        px_per_meter = 6
 
         self.Images = pd.DataFrame(np.zeros((1, 2), object), columns = ['Image', 'Target_MeterPerPx'])
 
-        image_path = f"{Path(__file__).parent}/CoR_left_turns/Image/image_scene_prediction_model_new.png"
+        image_path = self.path + os.sep + 'Data_sets' + os.sep + 'CoR_left_turns' + os.sep + 'Image' + os.sep + 'New_figure_6_px_per_meter.png'
         image = Image.open(image_path)
         rgb_image = image.convert('RGB')
         img = np.array(rgb_image, dtype=np.uint8)
@@ -65,20 +65,6 @@ class CoR_left_turns(data_set_template):
             t = np.array(self.Data.bot_track.iloc[i].t[t_index])
             ego = np.stack([savgol_filter(self.Data.bot_track.iloc[i].x[t_index],150,3), np.ones_like(self.Data.bot_track.iloc[i].y[t_index]) * -1.75], -1)
             tar = np.stack([savgol_filter(self.Data.ego_track.iloc[i].x[t_index],50,3), savgol_filter(self.Data.ego_track.iloc[i].y[t_index],50,3)], -1)
-
-            # plt.figure(1)
-            # plt.plot(np.diff(tar[:,0]))
-            # # plt.plot(np.diff(self.Data.ego_track.iloc[i].x[t_index]))
-
-            # plt.figure(2)
-            # plt.plot(np.diff(tar[:,1]))
-            # # plt.plot(np.diff(self.Data.ego_track.iloc[i].y[t_index]))
-
-            # plt.figure(3)
-            # plt.plot(np.diff(ego[:,0]))
-            # # plt.plot(np.diff(self.Data.bot_track.iloc[i].x[t_index]))
-
-            # plt.show()
    
             path.ego = ego
             path.tar = tar
@@ -97,6 +83,7 @@ class CoR_left_turns(data_set_template):
             self.T.append(t)
             self.Domain_old.append(domain)
         
+        # print(self.Path)
         self.Path = pd.DataFrame(self.Path)
         self.Type_old = pd.DataFrame(self.Type_old)
         self.T = np.array(self.T+[()], np.ndarray)[:-1]

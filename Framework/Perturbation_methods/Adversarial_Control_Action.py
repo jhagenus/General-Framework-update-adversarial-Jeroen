@@ -129,16 +129,16 @@ class Adversarial_Control_Action(perturbation_template):
 
     def initialize_settings(self):
         # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = False
+        self.plot_input = True
 
         # Spline settings
         self.total_spline_values = 100
 
         # Plot the loss over the iterations
-        self.plot_loss = False
+        self.plot_loss = True
 
         # Plot the adversarial scene
-        self.static_adv_scene = False
+        self.static_adv_scene = True
         self.animated_adv_scene = False
 
         # Setting animated scene
@@ -154,7 +154,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Initialize parameters
         self.num_samples = 20  # Defined as (K) in our paper
-        self.max_number_iterations = 25
+        self.max_number_iterations = 100
 
         # absolute clamping values
         self.epsilon_acc_absolute = 6
@@ -166,7 +166,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Learning decay
         self.gamma = 1
-        self.alpha = 0.01 # 0.01 no issue nan values
+        self.alpha = 0.001 # 0.01 no issue nan values
 
         # Learning rate adjusted
         self.alpha_acc = (self.epsilon_acc_relative / self.epsilon_curv_relative) * self.alpha
@@ -179,17 +179,31 @@ class Adversarial_Control_Action(perturbation_template):
         self.sigma_curvature = [0.01, 0.05]
         self.plot_smoothing = False
 
-        # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred', 'ADE_new_GT_Log', 'ADE_new_pred_Log', 'ADE_new_GT_Log_V2', 'ADE_new_pred_Log_V2'
-        # For FDE attack select: 'FDE', 'FDE_new_GT', 'FDE_new_pred', 'FDE_new_GT_Log', 'FDE_new_pred_Log', 'FDE_new_GT_Log_V2', 'FDE_new_pred_Log_V2'
-        # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
-        self.loss_function = 'ADE'
+        # For ADE attack select: 'ADE_GT' or 'ADE_Y_Perturb'
+        # For FDE attack select: 'FDE_GT', or 'FDE_Y_Perturb' 
+        # For Collision attack select: 'Collision', 'Hide_Collision'
+        self.loss_function = 'ADE_GT'
 
-        # For barrier function (observed states) select: 'Log', 'Log_V2' or None
-        self.barrier_function = 'Log'
+        # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
+        self.barrier_function_past = 'Trajectory_specific'
+
+        # For barrier function future select: 'Time_specific', 'Trajectory_specific' or None
+        self.barrier_function_future = 'Trajectory_specific' # if loss_function == 'Hide_Collision' set this feature -> None
+
+        # Paper combinations
+        # ADE loss -> ADE_GT + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None) + barrier_function_future(None)
+        # FDE loss -> FDE_GT + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None) + barrier_function_future(None)
+        # Max ADE loss -> ADE_Y_Perturb +  barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future('Time_specific', 'Trajectory_specific')
+        # Max FDE loss -> FDE_Y_Perturb +  barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future('Time_specific', 'Trajectory_specific')
+        # Collision loss -> Collision + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None) + barrier_function_future(None)  
+        # Fake Collision loss -> Collision + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future('Time_specific', 'Trajectory_specific'
+        # Hide Collision loss -> Hide_Collision + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future(None)
 
         # Barrier function parameters
-        self.distance_threshold = 1
-        self.log_value = 1.2
+        self.distance_threshold_past = 1
+        self.distance_threshold_future = 1
+        self.log_value_past = 2.5
+        self.log_value_future = 2.5
 
         # Time step
         self.dt = self.kwargs['data_param']['dt']
@@ -233,7 +247,7 @@ class Adversarial_Control_Action(perturbation_template):
         '''
 
         # Prepare the data (ordering/spline/edge_cases)
-        X, Y = self._prepare_data(X, Y, T, agent, Domain)
+        X, Y = self._prepare_data(X, Y, T, agent, Domain, physical_constraints)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
         X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self._prepare_data_attack(
@@ -289,9 +303,9 @@ class Adversarial_Control_Action(perturbation_template):
             with torch.no_grad():
                 perturbation[:, :, :,0].subtract_(grad[:, :, :,0], alpha=self.alpha_acc)
                 perturbation[:, :, :,1].subtract_(grad[:, :, :,1], alpha=self.alpha_curv)
-                perturbation[:, :, :,
-                             0].clamp_(-self.epsilon_acc_relative, self.epsilon_acc_relative)
-                perturbation[:, :, :, 1].clamp_(
+                perturbation[:, :, :X.shape[2], 0].clamp_(
+                    -self.epsilon_acc_relative, self.epsilon_acc_relative)
+                perturbation[:, :, :X.shape[2], 1].clamp_(
                     -self.epsilon_curv_relative, self.epsilon_curv_relative)
 
                 control_action_perturbed = control_action + perturbation
@@ -458,6 +472,7 @@ class Adversarial_Control_Action(perturbation_template):
         This method checks:
         - If the size of the `sigma_acceleration` and `sigma_curvature` lists are the same.
         - If the settings for `smoothing` and `plot_smoothing` are valid and ordered correctly.
+        - If adversarial loss function is valid.
 
         Returns:
         None
@@ -466,6 +481,8 @@ class Adversarial_Control_Action(perturbation_template):
         Helper.check_size_list(self.sigma_acceleration, self.sigma_curvature)
 
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
+
+        Helper.validate_adversarial_loss(self.loss_function, self.barrier_function_future)
 
     def _load_images(self, X, Domain):
         """
@@ -510,7 +527,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         return img, img_m_per_px
 
-    def _prepare_data(self, X, Y, T, agent, Domain):
+    def _prepare_data(self, X, Y, T, agent, Domain, physical_constraints):
         """
         Prepares data for further processing by removing NaN values,
         flipping dimensions of the agent data, and storing relevant
@@ -522,6 +539,7 @@ class Adversarial_Control_Action(perturbation_template):
         T (int): Type of agent observed.
         agent (object): It includes strings with the names of the agents.
         Domain (object): A domain object specifying the context of the agents
+        physical_constraints (object): A physical constraints object specifying the max acceleration of the agents used for clamping
 
         Returns:
         X (array-like): Processed observed feature matrix.
@@ -531,6 +549,9 @@ class Adversarial_Control_Action(perturbation_template):
         # Remove nan from input and remember old shape
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
+
+        # set clamping values for absolute acceleration
+        self.epsilon_acc_absolute = physical_constraints
 
         # Flip dimensions agents
         X, Y, self.agent_order, self.tar_agent_index, self.ego_agent_index = Helper.flip_dimensions(
@@ -563,7 +584,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Check if future action is required
         positions_perturb, self.future_action_included = Helper.create_data_to_perturb(
-            X=X, Y=Y, loss_function=self.loss_function)
+            X=X, Y=Y, barrier_function_future=self.barrier_function_future)
 
         # data for barrier function
         data_barrier = torch.cat((X, Y), dim=2)
@@ -600,7 +621,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         '''
 
-        self.batch_size = 2
+        self.batch_size = 1
 
     def requirerments(self):
         '''

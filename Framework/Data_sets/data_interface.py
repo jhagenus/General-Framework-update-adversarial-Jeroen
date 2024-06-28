@@ -45,12 +45,17 @@ class data_interface(object):
                 assert 'attack' in perturbation.keys(), "Perturbation attack type is missing (required key: 'attack')."
 
                 # TODO: For further methods, check 
-                if perturbation['attack'] == 'Adversarial':
+                if perturbation['attack'] == 'Adversarial_Position':
+                    perturbation['exp_parameters'] = parameters
+                elif perturbation['attack'] == 'Adversarial_Control_Action':
+                    perturbation['exp_parameters'] = parameters
+                elif perturbation['attack'] == 'Adversarial_Search':
+                    perturbation['exp_parameters'] = parameters
+                elif perturbation['attack'] == 'Adversarial_SA_Attack':
                     perturbation['exp_parameters'] = parameters
                 
                 # Get perturbation type
                 pert_name = perturbation['attack']
-
 
                 pert_module = importlib.import_module(pert_name)
                 pert_class = getattr(pert_module, pert_name)

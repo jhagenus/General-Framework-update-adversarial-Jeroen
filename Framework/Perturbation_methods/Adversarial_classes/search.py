@@ -4,7 +4,7 @@ import torch
 
 class Search:
     @staticmethod
-    def hard_constraint(positions_perturb, perturbation_tensor, ego_agent_index, tar_agent_index, hard_bound, physical_bounds, dt):
+    def hard_constraint(positions_perturb, perturbation_tensor, ego_agent_index, tar_agent_index, hard_bound, physical_bounds, dt, device):
         '''
         Apply hard constraints to the perturbation tensor.
 
@@ -78,7 +78,8 @@ class Search:
                     theta_storage[i,tar_agent_index,:,:] = theta
 
         print(theta_storage)
-        return perturbation_tensor * torch.tensor(theta_storage)
+
+        return perturbation_tensor * torch.tensor(theta_storage).to(device)
     
     @staticmethod
     def get_deviation(perturbation_array):
@@ -180,15 +181,15 @@ class Search:
         max_values = []
 
         for agent_data in data_reshaped:  # Transpose to iterate over agents
-            # Calculate the 1st and 99th percentile values for each agent
             percentile_001 = np.percentile(agent_data, 0.1)
-            percentile_999 = np.percentile(agent_data, 99.99)
+            percentile_999 = np.percentile(agent_data, 99.9)
 
             # Filter the data based on the 1st and 99th percentile values
             filtered_data = agent_data[(agent_data >= percentile_001) & (agent_data <= percentile_999)]
 
             # Calculate the maximum value of the filtered data
             max_value = np.max(filtered_data)
+
             
             max_values.append(max_value)
 

@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+from Adversarial_classes.control_action import Control_action
 
 class Helper:
     @staticmethod
@@ -21,21 +22,21 @@ class Helper:
             raise ValueError("The conversion is not correct.")
 
     @staticmethod
-    def create_data_to_perturb(X, Y, loss_function):
+    def create_data_to_perturb(X, Y, barrier_function_future):
         """
         Creates data to perturb based on the specified loss function.
 
         Args:
             X (torch.Tensor): A tensor containing the initial data with shape (batch size, number agents, number time steps past, coordinates (x,y)).
             Y (torch.Tensor): A tensor containing the future data with shape (batch size, number agents, number time steps future, coordinates (x,y)).
-            loss_function (str): A string specifying the loss function to determine how to create the perturbed data.
+            barrier_function_future (str): A string specifying the barrier function for future states to determine how to regulize future perturbed states.
 
         Returns:
             tuple: A tuple containing:
                    - positions_perturb (torch.Tensor): A tensor containing the data to be perturbed.
                    - future_action_included (bool): A boolean indicating whether future states are included in the perturbed data.
         """
-        if loss_function in ['ADE_new_GT', 'ADE_new_pred', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred']:
+        if barrier_function_future is not None:
             future_action_included = True
             positions_perturb = torch.cat((X, Y), dim=2)
         else:
@@ -44,6 +45,23 @@ class Helper:
 
         return positions_perturb, future_action_included
 
+
+    @staticmethod
+    def validate_adversarial_loss(loss_function, barrier_function_future):
+        """
+        Validates the adversarial loss function based on the barrier function for future states.
+
+        Args:
+            loss_function (str): A string specifying the loss function to use for adversarial perturbations.
+            barrier_function_future (str): A string specifying the barrier function for future states to determine how to regulize future perturbed states.
+
+        Raises:
+            ValueError: If the loss function is not compatible with the barrier function for future states.
+        """
+        if barrier_function_future is not None and loss_function in ['Hide_Collision']:
+            raise ValueError(
+                "The loss function is not compatible with the barrier function for future states.")
+    
     @staticmethod
     def remove_nan_values(data):
         """
@@ -265,6 +283,95 @@ class Helper:
         for arg in args:
             converted_tensors.append(Helper.to_cuda_tensor(arg, device))
         return converted_tensors
+    
+    @staticmethod
+    def determine_min_max_values_coordinates(data_observed, data_future):
+        """
+        Determines the minimum and maximum coordinate values of the data.
+
+        Args:
+            data_observed (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+            data_future (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time steps future, coordinates (x,y)).
+
+        Returns:
+            tuple: A tuple containing:
+                   - min_value_x (np.ndarray): The minimum value of the data.
+                   - max_value_x (np.ndarray): The maximum value of the data.
+                   - min_value_y (np.ndarray): The minimum value of the data.
+                   - max_value_y (np.ndarray): The maximum value of the data.
+
+        """
+        min_value_x = np.inf
+        max_value_x = -np.inf
+        max_value_y = -np.inf
+        min_value_y = np.inf
+
+        for i in range(data_observed.shape[0]):
+            for j in range(data_future.shape[1]):
+                min_value_x = min(min_value_x, np.min(data_future[i, j, :, 0]))
+                max_value_x = max(max_value_x, np.max(data_future[i, j, :, 0]))
+                min_value_y = min(min_value_y, np.min(data_future[i, j, :, 1]))
+                max_value_y = max(max_value_y, np.max(data_future[i, j, :, 1]))
+
+        return min_value_x, max_value_x, min_value_y, max_value_y
+    
+    @staticmethod
+    def determine_min_max_values_control_actions_acceleration(data_observed, data_future, dt):
+        """
+        Determines the minimum and maximum control action values of the data.
+
+        Args:
+            data_observed (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time steps observed, coordinates (x,y)).
+            data_future (np.ndarray): A 4-dimensional numpy array of shape (batch size, number agents, number time steps future, coordinates (x,y)).
+            dt (float): The time difference between consecutive time steps.
+
+        Returns:
+            tuple: A tuple containing:
+                   - min_value_acceleration (np.ndarray): The minimum value of the data.
+                   - max_value_acceleration (np.ndarray): The maximum value of the data.
+
+        """
+        min_value_acceleration = []
+        max_value_acceleration = []
+
+        data_observed = Helper.to_cuda_tensor(data_observed, "cpu")
+        data_future = Helper.to_cuda_tensor(data_future, "cpu")
+        
+        data = torch.cat((data_observed, data_future), dim=-2)
+
+        mask_data = Helper.compute_mask_values_tensor(data)
+
+        control_action, _, _ = Control_action.inverse_Dynamical_Model(data, mask_data, dt, "cpu")
+
+        control_action = Helper.detach_tensor(control_action)[0]
+
+        for i in range(control_action.shape[0]):
+            for j in range(control_action.shape[1]):
+                min_value_acceleration.append(np.min(control_action[i, j, :, 0]))
+                max_value_acceleration.append(np.max(control_action[i, j, :, 0]))
+
+        min_value_acceleration_sorted = np.sort(min_value_acceleration)
+        max_value_acceleration_sorted = np.sort(max_value_acceleration)
+
+        min_value_acceleration_sorted_without_nan = Helper.remove_nan_values_from_list(min_value_acceleration_sorted)
+        max_value_acceleration_sorted_without_nan = Helper.remove_nan_values_from_list(max_value_acceleration_sorted)
+
+        min_value_acceleration_selected = min_value_acceleration_sorted_without_nan[int(len(min_value_acceleration_sorted_without_nan) * 0.05)]
+        max_value_acceleration_selected = max_value_acceleration_sorted_without_nan[int(len(max_value_acceleration_sorted_without_nan) * 0.95)]
+
+        return np.max([np.abs(min_value_acceleration_selected), np.abs(max_value_acceleration_selected)])
+
+    def remove_nan_values_from_list(list):
+        """
+        Removes NaN values from the list.
+
+        Args:
+            list (list): The input list to be checked.
+
+        Returns:
+            list: The list with NaN values removed.
+        """
+        return [x for x in list if not np.isnan(x)]
 
     @staticmethod
     def convert_to_numpy_array(*args):
