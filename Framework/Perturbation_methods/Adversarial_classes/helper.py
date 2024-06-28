@@ -22,7 +22,7 @@ class Helper:
             raise ValueError("The conversion is not correct.")
 
     @staticmethod
-    def create_data_to_perturb(X, Y, barrier_function_future):
+    def create_data_to_perturb(X, Y, loss_function, barrier_function_future):
         """
         Creates data to perturb based on the specified loss function.
 
@@ -36,7 +36,7 @@ class Helper:
                    - positions_perturb (torch.Tensor): A tensor containing the data to be perturbed.
                    - future_action_included (bool): A boolean indicating whether future states are included in the perturbed data.
         """
-        if barrier_function_future is not None:
+        if loss_function == 'Hide_Collision' or barrier_function_future is not None:
             future_action_included = True
             positions_perturb = torch.cat((X, Y), dim=2)
         else:
