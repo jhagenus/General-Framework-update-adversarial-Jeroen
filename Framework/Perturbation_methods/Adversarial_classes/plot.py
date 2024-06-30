@@ -61,7 +61,8 @@ class Plot:
         self.car_width = adversarial.car_width
 
         # loss function
-        self.Name_attack = adversarial.loss_function
+        self.Name_attack = adversarial.loss_function_1
+        self.Name_attack_2 = adversarial.loss_function_2
 
     def plot_static_data(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, plot_input):
         # Iterate over each example in the data
@@ -182,8 +183,12 @@ class Plot:
             self.add_arrow_animation(fig)
 
             # ani.save(f'{Path(__file__).parent}/Animations/Animation_scene_{Name_attack}-{np.random.rand(1)}.mp4')
-            ani.save(
-                f'Animation_scene_{self.Name_attack}-{np.random.rand(1)}.mp4')
+            if self.Name_attack_2:
+                ani.save(
+                    f'Animation_scene_{self.Name_attack}-{self.Name_attack_2}-{np.random.rand(1)}.mp4')
+            else:
+                ani.save(
+                    f'Animation_scene_{self.Name_attack}-{np.random.rand(1)}.mp4')
 
             plt.show()
 

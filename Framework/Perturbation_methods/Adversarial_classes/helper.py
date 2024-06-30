@@ -22,21 +22,22 @@ class Helper:
             raise ValueError("The conversion is not correct.")
 
     @staticmethod
-    def create_data_to_perturb(X, Y, loss_function, barrier_function_future):
+    def create_data_to_perturb(X, Y, loss_function_1, loss_function_2):
         """
         Creates data to perturb based on the specified loss function.
 
         Args:
             X (torch.Tensor): A tensor containing the initial data with shape (batch size, number agents, number time steps past, coordinates (x,y)).
             Y (torch.Tensor): A tensor containing the future data with shape (batch size, number agents, number time steps future, coordinates (x,y)).
-            barrier_function_future (str): A string specifying the barrier function for future states to determine how to regulize future perturbed states.
+            loss_function_1 (str): A string specifying the first loss function to use for adversarial perturbations.
+            loss_function_2 (str): A string specifying the second loss function to use for adversarial perturbations.
 
         Returns:
             tuple: A tuple containing:
                    - positions_perturb (torch.Tensor): A tensor containing the data to be perturbed.
                    - future_action_included (bool): A boolean indicating whether future states are included in the perturbed data.
         """
-        if loss_function == 'Hide_Collision' or barrier_function_future is not None:
+        if ('Y_Perturb' in loss_function_1) or ('Y_Perturb' in loss_function_2):
             future_action_included = True
             positions_perturb = torch.cat((X, Y), dim=2)
         else:
@@ -47,20 +48,18 @@ class Helper:
 
 
     @staticmethod
-    def validate_adversarial_loss(loss_function, barrier_function_future):
+    def validate_adversarial_loss(loss_function):
         """
         Validates the adversarial loss function based on the barrier function for future states.
 
         Args:
             loss_function (str): A string specifying the loss function to use for adversarial perturbations.
-            barrier_function_future (str): A string specifying the barrier function for future states to determine how to regulize future perturbed states.
 
         Raises:
-            ValueError: If the loss function is not compatible with the barrier function for future states.
+            ValueError: If the loss function is None.
         """
-        if barrier_function_future is not None and loss_function in ['Hide_Collision']:
-            raise ValueError(
-                "The loss function is not compatible with the barrier function for future states.")
+        if loss_function is None:
+            raise ValueError("The loss function cannot be None.")
     
     @staticmethod
     def remove_nan_values(data):

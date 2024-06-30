@@ -179,25 +179,17 @@ class Adversarial_Control_Action(perturbation_template):
         self.sigma_curvature = [0.01, 0.05]
         self.plot_smoothing = False
 
-        # For ADE attack select: 'ADE_GT' or 'ADE_Y_Perturb'
-        # For FDE attack select: 'FDE_GT', or 'FDE_Y_Perturb' 
-        # For Collision attack select: 'Collision', 'Hide_Collision'
-        self.loss_function = 'ADE_GT'
+        # ADE attack select (Maximize distance): 'ADE_Y_GT_Y_Pred_Max', 'ADE_Y_Perturb_Y_Pred_Max', 'ADE_Y_Perturb_Y_GT_Max', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Max', 'ADE_Y_pred_and_Y_pred_iteration_1_Max'
+        # ADE attack select (Minimize distance): 'ADE_Y_GT_Y_Pred_Min', 'ADE_Y_Perturb_Y_Pred_Min', 'ADE_Y_Perturb_Y_GT_Min', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Min', 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
+        # FDE attack select (Maximize distance): 'FDE_Y_GT_Y_Pred_Max', 'FDE_Y_Perturb_Y_Pred_Max', 'FDE_Y_Perturb_Y_GT_Max', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Max', 'FDE_Y_pred_and_Y_pred_iteration_1_Max'
+        # FDE attack select (Minimize distance): 'FDE_Y_GT_Y_Pred_Min', 'FDE_Y_Perturb_Y_Pred_Min', 'FDE_Y_Perturb_Y_GT_Min', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Min', 'FDE_Y_pred_and_Y_pred_iteration_1_Min'
+        # Collision attack select: 'Collision_Y_pred_tar_Y_GT_ego', 'Collision_Y_Perturb_tar_Y_GT_ego'
+        self.loss_function_1 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
+        self.loss_function_2 = 'Collision_Y_Perturb_tar_Y_GT_ego'
 
         # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
         self.barrier_function_past = 'Trajectory_specific'
-
-        # For barrier function future select: 'Time_specific', 'Trajectory_specific' or None
-        self.barrier_function_future = 'Trajectory_specific' # if loss_function == 'Hide_Collision' set this feature -> None
-
-        # Paper combinations
-        # ADE loss -> ADE_GT + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None) + barrier_function_future(None)
-        # FDE loss -> FDE_GT + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None) + barrier_function_future(None)
-        # Max ADE loss -> ADE_Y_Perturb +  barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future('Time_specific', 'Trajectory_specific')
-        # Max FDE loss -> FDE_Y_Perturb +  barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future('Time_specific', 'Trajectory_specific')
-        # Collision loss -> Collision + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None) + barrier_function_future(None)  
-        # Fake Collision loss -> Collision + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future('Time_specific', 'Trajectory_specific'
-        # Hide Collision loss -> Hide_Collision + barrier_function_past('Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific') + barrier_function_future(None)
+        self.barrier_function_future = None 
 
         # Barrier function parameters
         self.distance_threshold_past = 1
@@ -482,7 +474,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
 
-        Helper.validate_adversarial_loss(self.loss_function, self.barrier_function_future)
+        Helper.validate_adversarial_loss(self.loss_function_1)
 
     def _load_images(self, X, Domain):
         """
@@ -584,7 +576,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Check if future action is required
         positions_perturb, self.future_action_included = Helper.create_data_to_perturb(
-            X=X, Y=Y, barrier_function_future=self.barrier_function_future)
+            X=X, Y=Y, loss_function_1=self.loss_function_1, loss_function_2=self.loss_function_2)
 
         # data for barrier function
         data_barrier = torch.cat((X, Y), dim=2)
