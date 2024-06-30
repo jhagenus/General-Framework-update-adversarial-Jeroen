@@ -3,6 +3,7 @@ import torch
 
 from Adversarial_classes.control_action import Control_action
 
+
 class Helper:
     @staticmethod
     def check_conversion(Data_1, Data_2):
@@ -37,7 +38,13 @@ class Helper:
                    - positions_perturb (torch.Tensor): A tensor containing the data to be perturbed.
                    - future_action_included (bool): A boolean indicating whether future states are included in the perturbed data.
         """
-        if ('Y_Perturb' in loss_function_1) or ('Y_Perturb' in loss_function_2):
+        if ('Y_Perturb' in loss_function_1):
+            future_action_included = True
+            positions_perturb = torch.cat((X, Y), dim=2)
+        elif loss_function_2 is None:
+            future_action_included = False
+            positions_perturb = X
+        elif 'Y_Perturb' in loss_function_2:
             future_action_included = True
             positions_perturb = torch.cat((X, Y), dim=2)
         else:
@@ -45,7 +52,6 @@ class Helper:
             positions_perturb = X
 
         return positions_perturb, future_action_included
-
 
     @staticmethod
     def validate_adversarial_loss(loss_function):
@@ -60,7 +66,7 @@ class Helper:
         """
         if loss_function is None:
             raise ValueError("The loss function cannot be None.")
-    
+
     @staticmethod
     def remove_nan_values(data):
         """
@@ -144,7 +150,7 @@ class Helper:
                 - X_new_pert (np.ndarray): The reordered X tensor.
                 - Y_new_pert (np.ndarray): The reordered Y tensor.
         """
-        
+
         agent_order_inverse = np.argsort(agent_order)
         X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
         Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
@@ -224,7 +230,7 @@ class Helper:
                    - ego_index (int): The index of the ego agent.
         """
         # Early exit if no dimension flipping is required
-        
+
         # Determine the indices for the target and ego agents
         i_agent_perturbed = np.where(agent == 'tar')[0][0]
         i_agent_collision = np.where(agent == 'ego')[0][0]
@@ -247,7 +253,6 @@ class Helper:
         ego_index = 1
 
         return X, Y, agent_order, tar_index, ego_index
-    
 
     def get_dimensions_physical_bounds(constraints, agent_order):
         """
@@ -265,7 +270,6 @@ class Helper:
             reordered_constraints[key] = value[agent_order]
         return reordered_constraints
 
-
     @staticmethod
     def convert_to_tensor(device, *args):
         """
@@ -282,7 +286,7 @@ class Helper:
         for arg in args:
             converted_tensors.append(Helper.to_cuda_tensor(arg, device))
         return converted_tensors
-    
+
     @staticmethod
     def determine_min_max_values_coordinates(data_observed, data_future):
         """
@@ -313,7 +317,7 @@ class Helper:
                 max_value_y = max(max_value_y, np.max(data_future[i, j, :, 1]))
 
         return min_value_x, max_value_x, min_value_y, max_value_y
-    
+
     @staticmethod
     def determine_min_max_values_control_actions_acceleration(data_observed, data_future, dt):
         """
@@ -335,28 +339,35 @@ class Helper:
 
         data_observed = Helper.to_cuda_tensor(data_observed, "cpu")
         data_future = Helper.to_cuda_tensor(data_future, "cpu")
-        
+
         data = torch.cat((data_observed, data_future), dim=-2)
 
         mask_data = Helper.compute_mask_values_tensor(data)
 
-        control_action, _, _ = Control_action.inverse_Dynamical_Model(data, mask_data, dt, "cpu")
+        control_action, _, _ = Control_action.inverse_Dynamical_Model(
+            data, mask_data, dt, "cpu")
 
         control_action = Helper.detach_tensor(control_action)[0]
 
         for i in range(control_action.shape[0]):
             for j in range(control_action.shape[1]):
-                min_value_acceleration.append(np.min(control_action[i, j, :, 0]))
-                max_value_acceleration.append(np.max(control_action[i, j, :, 0]))
+                min_value_acceleration.append(
+                    np.min(control_action[i, j, :, 0]))
+                max_value_acceleration.append(
+                    np.max(control_action[i, j, :, 0]))
 
         min_value_acceleration_sorted = np.sort(min_value_acceleration)
         max_value_acceleration_sorted = np.sort(max_value_acceleration)
 
-        min_value_acceleration_sorted_without_nan = Helper.remove_nan_values_from_list(min_value_acceleration_sorted)
-        max_value_acceleration_sorted_without_nan = Helper.remove_nan_values_from_list(max_value_acceleration_sorted)
+        min_value_acceleration_sorted_without_nan = Helper.remove_nan_values_from_list(
+            min_value_acceleration_sorted)
+        max_value_acceleration_sorted_without_nan = Helper.remove_nan_values_from_list(
+            max_value_acceleration_sorted)
 
-        min_value_acceleration_selected = min_value_acceleration_sorted_without_nan[int(len(min_value_acceleration_sorted_without_nan) * 0.05)]
-        max_value_acceleration_selected = max_value_acceleration_sorted_without_nan[int(len(max_value_acceleration_sorted_without_nan) * 0.95)]
+        min_value_acceleration_selected = min_value_acceleration_sorted_without_nan[int(
+            len(min_value_acceleration_sorted_without_nan) * 0.05)]
+        max_value_acceleration_selected = max_value_acceleration_sorted_without_nan[int(
+            len(max_value_acceleration_sorted_without_nan) * 0.95)]
 
         return np.max([np.abs(min_value_acceleration_selected), np.abs(max_value_acceleration_selected)])
 

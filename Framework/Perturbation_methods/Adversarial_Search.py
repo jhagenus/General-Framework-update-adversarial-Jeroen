@@ -163,16 +163,23 @@ class Adversarial_Search(perturbation_template):
         self.sigma = [0.05, 0.1]
         self.plot_smoothing = False
 
-        # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
-        # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
-        self.loss_function = 'ADE'
+        # ADE attack select (Maximize distance): 'ADE_Y_GT_Y_Pred_Max', 'ADE_Y_Perturb_Y_Pred_Max', 'ADE_Y_Perturb_Y_GT_Max', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Max', 'ADE_Y_pred_and_Y_pred_iteration_1_Max'
+        # ADE attack select (Minimize distance): 'ADE_Y_GT_Y_Pred_Min', 'ADE_Y_Perturb_Y_Pred_Min', 'ADE_Y_Perturb_Y_GT_Min', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Min', 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
+        # FDE attack select (Maximize distance): 'FDE_Y_GT_Y_Pred_Max', 'FDE_Y_Perturb_Y_Pred_Max', 'FDE_Y_Perturb_Y_GT_Max', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Max', 'FDE_Y_pred_and_Y_pred_iteration_1_Max'
+        # FDE attack select (Minimize distance): 'FDE_Y_GT_Y_Pred_Min', 'FDE_Y_Perturb_Y_Pred_Min', 'FDE_Y_Perturb_Y_GT_Min', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Min', 'FDE_Y_pred_and_Y_pred_iteration_1_Min'
+        # Collision attack select: 'Collision_Y_pred_tar_Y_GT_ego', 'Collision_Y_Perturb_tar_Y_GT_ego'
+        self.loss_function_1 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
+        self.loss_function_2 = 'Collision_Y_Perturb_tar_Y_GT_ego'
 
-        # For barrier function select: 'Log', 'Log_V2' or None
-        self.barrier_function = 'None'
+        # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
+        self.barrier_function_past = 'Trajectory_specific'
+        self.barrier_function_future = None
 
         # Barrier function parameters
-        self.distance_threshold = 1
-        self.log_value = 1.2
+        self.distance_threshold_past = 1
+        self.distance_threshold_future = 1
+        self.log_value_past = 2.5
+        self.log_value_future = 2.5
 
         # Time step
         self.dt = self.kwargs['data_param']['dt']
@@ -223,7 +230,8 @@ class Adversarial_Search(perturbation_template):
             X, Y)
 
         # Create a tensor for the perturbation
-        perturbation = torch.rand_like(positions_perturb).to(self.pert_model.device)
+        perturbation = torch.zeros_like(
+            positions_perturb).to(self.pert_model.device)
         perturbation.requires_grad = True
 
         # Store the loss for plot
@@ -236,7 +244,7 @@ class Adversarial_Search(perturbation_template):
 
             # Process the perturbations
             perturbation_new = Search.hard_constraint(positions_perturb=positions_perturb, perturbation_tensor=perturbation, ego_agent_index=self.ego_agent_index,
-                                                      tar_agent_index=self.tar_agent_index, hard_bound=self.distance_threshold, physical_bounds=self.physical_bounds, dt=self.dt, device=self.pert_model.device)
+                                                      tar_agent_index=self.tar_agent_index, hard_bound=self.distance_threshold_past, physical_bounds=self.physical_bounds, dt=self.dt, device=self.pert_model.device)
 
             # Split the adversarial position back to X and Y
             X_new, Y_new = Helper.return_data(
@@ -416,6 +424,8 @@ class Adversarial_Search(perturbation_template):
         # check if the size of both sigmas are the same
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
 
+        Helper.validate_adversarial_loss(self.loss_function_1)
+
     def _load_images(self, X, Domain):
         """
         Loads images required for neural netwrok on the given observed positions and domain information.
@@ -515,7 +525,7 @@ class Adversarial_Search(perturbation_template):
 
         # Check if future action is required
         positions_perturb, self.future_action_included = Helper.create_data_to_perturb(
-            X=X, Y=Y, loss_function=self.loss_function)
+            X=X, Y=Y, loss_function_1=self.loss_function_1, loss_function_2=self.loss_function_2)
 
         # data for barrier function
         data_barrier = torch.cat((X, Y), dim=2)

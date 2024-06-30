@@ -166,10 +166,11 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Learning decay
         self.gamma = 1
-        self.alpha = 0.001 # 0.01 no issue nan values
+        self.alpha = 0.001  # 0.01 no issue nan values
 
         # Learning rate adjusted
-        self.alpha_acc = (self.epsilon_acc_relative / self.epsilon_curv_relative) * self.alpha
+        self.alpha_acc = (self.epsilon_acc_relative /
+                          self.epsilon_curv_relative) * self.alpha
         self.alpha_curv = self.alpha
 
         # Randomized smoothing
@@ -184,12 +185,12 @@ class Adversarial_Control_Action(perturbation_template):
         # FDE attack select (Maximize distance): 'FDE_Y_GT_Y_Pred_Max', 'FDE_Y_Perturb_Y_Pred_Max', 'FDE_Y_Perturb_Y_GT_Max', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Max', 'FDE_Y_pred_and_Y_pred_iteration_1_Max'
         # FDE attack select (Minimize distance): 'FDE_Y_GT_Y_Pred_Min', 'FDE_Y_Perturb_Y_Pred_Min', 'FDE_Y_Perturb_Y_GT_Min', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Min', 'FDE_Y_pred_and_Y_pred_iteration_1_Min'
         # Collision attack select: 'Collision_Y_pred_tar_Y_GT_ego', 'Collision_Y_Perturb_tar_Y_GT_ego'
-        self.loss_function_1 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
-        self.loss_function_2 = 'Collision_Y_Perturb_tar_Y_GT_ego'
+        self.loss_function_1 = 'ADE_Y_GT_Y_Pred_Max'
+        self.loss_function_2 = None
 
         # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
         self.barrier_function_past = 'Trajectory_specific'
-        self.barrier_function_future = None 
+        self.barrier_function_future = None
 
         # Barrier function parameters
         self.distance_threshold_past = 1
@@ -293,8 +294,10 @@ class Adversarial_Control_Action(perturbation_template):
 
             # Update Control inputs
             with torch.no_grad():
-                perturbation[:, :, :,0].subtract_(grad[:, :, :,0], alpha=self.alpha_acc)
-                perturbation[:, :, :,1].subtract_(grad[:, :, :,1], alpha=self.alpha_curv)
+                perturbation[:, :, :, 0].subtract_(
+                    grad[:, :, :, 0], alpha=self.alpha_acc)
+                perturbation[:, :, :, 1].subtract_(
+                    grad[:, :, :, 1], alpha=self.alpha_curv)
                 perturbation[:, :, :X.shape[2], 0].clamp_(
                     -self.epsilon_acc_relative, self.epsilon_acc_relative)
                 perturbation[:, :, :X.shape[2], 1].clamp_(
@@ -336,7 +339,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Plot the data
         self._ploting_module(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1,
-                            data_barrier, loss_store, control_action, perturbation)
+                             data_barrier, loss_store, control_action, perturbation)
 
         # Return Y to old shape
         Y_new = Helper.return_to_old_shape(Y_new, self.Y_shape)
@@ -537,7 +540,7 @@ class Adversarial_Control_Action(perturbation_template):
         X (array-like): Processed observed feature matrix.
         Y (array-like): Processed future feature matrix.
         """
-        
+
         # Remove nan from input and remember old shape
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
@@ -581,7 +584,8 @@ class Adversarial_Control_Action(perturbation_template):
         # data for barrier function
         data_barrier = torch.cat((X, Y), dim=2)
 
-        self.mask_data = Helper.compute_mask_values_tensor(torch.cat((X, Y), dim=-2))
+        self.mask_data = Helper.compute_mask_values_tensor(
+            torch.cat((X, Y), dim=-2))
 
         # Load images for adversarial attack (change when using image)
         # img, img_m_per_px = self._load_images(X,Domain)
@@ -589,7 +593,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         # Show image
         if self.image_neural_network:
-            plot_img = Image.fromarray(self.img[0,0,:],'RGB')
+            plot_img = Image.fromarray(self.img[0, 0, :], 'RGB')
             plot_img.show()
 
         # Create storage for the adversarial prediction on nominal setting

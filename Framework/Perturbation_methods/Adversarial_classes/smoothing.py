@@ -7,7 +7,7 @@ from Adversarial_classes.helper import Helper
 
 
 class Smoothing:
-    def __init__(self, adversarial, adv_position, X, Y, control_action = None, control_action_perturbed = None, velocity = None , heading = None):
+    def __init__(self, adversarial, adv_position, X, Y, control_action=None, control_action_perturbed=None, velocity=None, heading=None):
         # check smoothing
         self.smoothing = adversarial.smoothing
 
@@ -63,7 +63,7 @@ class Smoothing:
         self.img = adversarial.img
         self.img_m_per_px = adversarial.img_m_per_px
         self.num_steps = adversarial.num_steps_predict
-                            
+
     def randomized_smoothing(self):
         """
         Applies randomized adversarial smoothing and returns the smoothed data.
@@ -130,7 +130,8 @@ class Smoothing:
 
         # Add noise to the target agent
         if self.smoothing_strategy == 'Control_Action':
-            data_noised = self.add_noise_control_actions(index_sigma, perturbed)
+            data_noised = self.add_noise_control_actions(
+                index_sigma, perturbed)
         elif self.smoothing_strategy == 'Position':
             data_noised = self.add_noise_position(index_sigma, perturbed)
 
@@ -149,7 +150,7 @@ class Smoothing:
             Y_Pred_smoothed.detach().cpu().numpy(), axis=1)
 
         return data_noised, Y_Pred_smoothed
-    
+
     def add_noise_position(self, index_sigma, perturbed):
         """
         Adds Gaussian noise to the positions.
@@ -180,7 +181,7 @@ class Smoothing:
 
         data_noised, _ = Helper.return_data(
             data_noised, self.X, self.Y, self.future_action)
-        
+
         return data_noised
 
     def add_noise_control_actions(self, index_sigma, perturbed):

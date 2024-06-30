@@ -2,6 +2,7 @@ import copy
 import numpy as np
 import torch
 
+
 class Search:
     @staticmethod
     def hard_constraint(positions_perturb, perturbation_tensor, ego_agent_index, tar_agent_index, hard_bound, physical_bounds, dt, device):
@@ -49,13 +50,14 @@ class Search:
             theta -= 0.01
             if theta <= 0.01:
                 break
-        
+
             # Merge the perturbation tensor with the positions_perturb
             merged_trace_array = copy.deepcopy(positions_perturb)
             merged_trace_array += theta * perturbation_array
 
             # Calculate the physical metrics
-            scalar_v, linear_a, rotate_a, linear_aa, rotate_aa = Search.get_metrics(merged_trace_array, dt)
+            scalar_v, linear_a, rotate_a, linear_aa, rotate_aa = Search.get_metrics(
+                merged_trace_array, dt)
             deviation = Search.get_deviation(theta * perturbation_array)
 
             # Check if the perturbation values exceed the hard bound
@@ -65,22 +67,26 @@ class Search:
                     continue
 
                 # Check if the perturbation values exceed the hard bound
-                check_scalar_v = np.sum(scalar_v[i,tar_agent_index,:] > physical_bounds["scalar_v"][tar_agent_index]) == 0
-                check_linear_a = np.sum(linear_a[i,tar_agent_index,:] > physical_bounds["linear_a"][tar_agent_index]) == 0
-                check_rotate_a = np.sum(rotate_a[i,tar_agent_index,:] > physical_bounds["rotate_a"][tar_agent_index]) == 0
-                check_linear_aa = np.sum(linear_aa[i,tar_agent_index,:] > physical_bounds["linear_aa"][tar_agent_index]) == 0
-                check_rotate_aa = np.sum(rotate_aa[i,tar_agent_index,:] > physical_bounds["rotate_aa"][tar_agent_index]) == 0
-                check_deviation = np.sum(deviation[:,tar_agent_index,:] > hard_bound) == 0
+                check_scalar_v = np.sum(
+                    scalar_v[i, tar_agent_index, :] > physical_bounds["scalar_v"][tar_agent_index]) == 0
+                check_linear_a = np.sum(
+                    linear_a[i, tar_agent_index, :] > physical_bounds["linear_a"][tar_agent_index]) == 0
+                check_rotate_a = np.sum(
+                    rotate_a[i, tar_agent_index, :] > physical_bounds["rotate_a"][tar_agent_index]) == 0
+                check_linear_aa = np.sum(
+                    linear_aa[i, tar_agent_index, :] > physical_bounds["linear_aa"][tar_agent_index]) == 0
+                check_rotate_aa = np.sum(
+                    rotate_aa[i, tar_agent_index, :] > physical_bounds["rotate_aa"][tar_agent_index]) == 0
+                check_deviation = np.sum(
+                    deviation[:, tar_agent_index, :] > hard_bound) == 0
 
                 # If all checks pass, set check_pass to True and store the theta value
                 if check_scalar_v and check_linear_a and check_rotate_a and check_linear_aa and check_rotate_aa and check_deviation:
                     check_pass[i] = True
-                    theta_storage[i,tar_agent_index,:,:] = theta
-
-        print(theta_storage)
+                    theta_storage[i, tar_agent_index, :, :] = theta
 
         return perturbation_tensor * torch.tensor(theta_storage).to(device)
-    
+
     @staticmethod
     def get_deviation(perturbation_array):
         '''
@@ -95,7 +101,7 @@ class Search:
         numpy.ndarray: Array containing the deviation values with shape (batch size, number agents, number time steps).
         '''
         return np.sum(perturbation_array ** 2, axis=-1) ** 0.5
-    
+
     @staticmethod
     def get_unit_vector(vectors):
         """
@@ -112,10 +118,10 @@ class Search:
         """
         scale = np.sum(vectors ** 2, axis=-1) ** 0.5 + 0.001
         result = np.zeros(vectors.shape)
-        result[:,:,:,0] = vectors[:,:,:,0] / scale
-        result[:,:,:,1] = vectors[:,:,:,1] / scale
+        result[:, :, :, 0] = vectors[:, :, :, 0] / scale
+        result[:, :, :, 1] = vectors[:, :, :, 1] / scale
         return result
-    
+
     @staticmethod
     def get_metrics(trace_array, dt):
         """
@@ -134,14 +140,14 @@ class Search:
             - rotate_aa: Rotational angular acceleration.
         """
         # Calculate the velocity, acceleration, and angular acceleration
-        v = (trace_array[:, :, 1:, :] - trace_array[:, :, :-1, :]) 
+        v = (trace_array[:, :, 1:, :] - trace_array[:, :, :-1, :])
         a = (v[:, :, 1:, :] - v[:, :, :-1, :])
-        aa = (a[:, :, 1:, :] - a[:, :, :-1, :]) 
+        aa = (a[:, :, 1:, :] - a[:, :, :-1, :])
 
         # Calculate the unit vectors for the velocity
         direction = Search.get_unit_vector(v)
         direction_r = np.concatenate((direction[:, :, :, 1].reshape(direction.shape[0], direction.shape[1], direction.shape[2], 1),
-                                    -direction[:, :, :, 0].reshape(direction.shape[0], direction.shape[1], direction.shape[2], 1)), axis=-1)
+                                      -direction[:, :, :, 0].reshape(direction.shape[0], direction.shape[1], direction.shape[2], 1)), axis=-1)
 
         # Calculate the scalar velocity and acceleration
         scalar_v = np.sum(v ** 2, axis=-1) ** 0.5
@@ -152,10 +158,10 @@ class Search:
 
         # Calculate the linear and rotational angular acceleration
         linear_aa = np.absolute(np.sum(direction[:, :, :-2, :] * aa, axis=-1))
-        rotate_aa = np.absolute(np.sum(direction_r[:, :, :-2, :] * aa, axis=-1))
+        rotate_aa = np.absolute(
+            np.sum(direction_r[:, :, :-2, :] * aa, axis=-1))
 
         return scalar_v, linear_a, rotate_a, linear_aa, rotate_aa
-    
 
     @staticmethod
     def filtered_max_data(data):
@@ -176,7 +182,8 @@ class Search:
         data_array = np.nan_to_num(data)
 
         # Reshape the data to (batch_size * time_steps, number_agents)
-        data_reshaped = np.swapaxes(data_array, 0, 1).reshape(data_array.shape[1], -1)
+        data_reshaped = np.swapaxes(
+            data_array, 0, 1).reshape(data_array.shape[1], -1)
 
         max_values = []
 
@@ -185,12 +192,12 @@ class Search:
             percentile_999 = np.percentile(agent_data, 99.9)
 
             # Filter the data based on the 1st and 99th percentile values
-            filtered_data = agent_data[(agent_data >= percentile_001) & (agent_data <= percentile_999)]
+            filtered_data = agent_data[(agent_data >= percentile_001) & (
+                agent_data <= percentile_999)]
 
             # Calculate the maximum value of the filtered data
             max_value = np.max(filtered_data)
 
-            
             max_values.append(max_value)
 
         return np.array(max_values)
@@ -216,11 +223,12 @@ class Search:
             - 'max_linear_aa': Maximum linear angular acceleration.
             - 'max_rotate_aa': Maximum rotational angular acceleration.
         """
-        
+
         # concatenate the historical and future data along the time axis
         data_concatenate = np.concatenate((X, Y), axis=-2)
 
-        scalar_v, linear_a, rotate_a, linear_aa, rotate_aa = Search.get_metrics(data_concatenate, dt)
+        scalar_v, linear_a, rotate_a, linear_aa, rotate_aa = Search.get_metrics(
+            data_concatenate, dt)
 
         # calculate the maximum values for the metrics and filter outliers
         constraints = {
@@ -230,11 +238,5 @@ class Search:
             'linear_aa': Search.filtered_max_data(linear_aa),
             'rotate_aa': Search.filtered_max_data(rotate_aa)
         }
-        
+
         return constraints
-
-
-
-
-
-

@@ -162,16 +162,23 @@ class Adversarial_Position(perturbation_template):
         self.sigma = [0.05, 0.1]
         self.plot_smoothing = True
 
-        # For ADE attack select: 'ADE', 'ADE_new_GT', 'ADE_new_pred'
-        # For Collision attack select: 'Collision', 'Fake_collision_GT', 'Fake_collision_Pred', 'Hide_collision_GT', 'Hide_collision_Pred'
-        self.loss_function = 'ADE'
+        # ADE attack select (Maximize distance): 'ADE_Y_GT_Y_Pred_Max', 'ADE_Y_Perturb_Y_Pred_Max', 'ADE_Y_Perturb_Y_GT_Max', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Max', 'ADE_Y_pred_and_Y_pred_iteration_1_Max'
+        # ADE attack select (Minimize distance): 'ADE_Y_GT_Y_Pred_Min', 'ADE_Y_Perturb_Y_Pred_Min', 'ADE_Y_Perturb_Y_GT_Min', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Min', 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
+        # FDE attack select (Maximize distance): 'FDE_Y_GT_Y_Pred_Max', 'FDE_Y_Perturb_Y_Pred_Max', 'FDE_Y_Perturb_Y_GT_Max', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Max', 'FDE_Y_pred_and_Y_pred_iteration_1_Max'
+        # FDE attack select (Minimize distance): 'FDE_Y_GT_Y_Pred_Min', 'FDE_Y_Perturb_Y_Pred_Min', 'FDE_Y_Perturb_Y_GT_Min', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Min', 'FDE_Y_pred_and_Y_pred_iteration_1_Min'
+        # Collision attack select: 'Collision_Y_pred_tar_Y_GT_ego', 'Collision_Y_Perturb_tar_Y_GT_ego'
+        self.loss_function_1 = 'ADE_Y_GT_Y_Pred_Max'
+        self.loss_function_2 = None
 
-        # For barrier function select: 'Log', 'Log_V2' or None
-        self.barrier_function = 'Log'
+        # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
+        self.barrier_function_past = 'Trajectory_specific'
+        self.barrier_function_future = None
 
         # Barrier function parameters
-        self.distance_threshold = 1
-        self.log_value = 1.2
+        self.distance_threshold_past = 1
+        self.distance_threshold_future = 1
+        self.log_value_past = 2.5
+        self.log_value_future = 2.5
 
         # Time step
         self.dt = self.kwargs['data_param']['dt']
@@ -179,7 +186,7 @@ class Adversarial_Position(perturbation_template):
         # Do a assertion check on settings
         self._assertion_check()
 
-    def perturb_batch(self, X, Y, T, agent, Domain):
+    def perturb_batch(self, X, Y, T, agent, Domain, contstraints):
         '''
         This function takes a batch of data and generates perturbations.
 
@@ -262,7 +269,7 @@ class Adversarial_Position(perturbation_template):
             # Update Control inputs
             with torch.no_grad():
                 perturbation.subtract_(grad, alpha=self.alpha)
-                
+
                 # set perturbations of ego agent to zero
                 perturbation[:, 1:] = 0.0
 
@@ -287,7 +294,7 @@ class Adversarial_Position(perturbation_template):
 
         # Plot the data
         self._ploting_module(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1,
-                            data_barrier, loss_store)
+                             data_barrier, loss_store)
 
         # Return Y to old shape
         Y_new = Helper.return_to_old_shape(Y_new, self.Y_shape)
@@ -334,7 +341,8 @@ class Adversarial_Position(perturbation_template):
 
         # Plot the animated adversarial scene
         if self.animated_adv_scene:
-            plot.plot_animated_adv_scene(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1)
+            plot.plot_animated_adv_scene(
+                X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1)
 
         # Plot the randomized smoothing
         if self.plot_smoothing:
@@ -409,6 +417,7 @@ class Adversarial_Position(perturbation_template):
         """
         # check if the size of both sigmas are the same
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
+        Helper.validate_adversarial_loss(self.loss_function_1)
 
     def _load_images(self, X, Domain):
         """
@@ -470,7 +479,7 @@ class Adversarial_Position(perturbation_template):
         X (array-like): Processed observed feature matrix.
         Y (array-like): Processed future feature matrix.
         """
-        
+
         # Remove nan from input and remember old shape
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
@@ -506,7 +515,7 @@ class Adversarial_Position(perturbation_template):
 
         # Check if future action is required
         positions_perturb, self.future_action_included = Helper.create_data_to_perturb(
-            X=X, Y=Y, loss_function=self.loss_function)
+            X=X, Y=Y, loss_function_1=self.loss_function_1, loss_function_2=self.loss_function_2)
 
         # data for barrier function
         data_barrier = torch.cat((X, Y), dim=2)
@@ -519,7 +528,7 @@ class Adversarial_Position(perturbation_template):
 
         # Show image
         if self.image_neural_network:
-            plot_img = Image.fromarray(self.img[0,0,:],'RGB')
+            plot_img = Image.fromarray(self.img[0, 0, :], 'RGB')
             plot_img.show()
 
         # Create storage for the adversarial prediction on nominal setting

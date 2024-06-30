@@ -1,5 +1,6 @@
 import torch
 
+
 class Control_action:
     @staticmethod
     def inverse_Dynamical_Model(positions_perturb, mask_data, dt, device):
