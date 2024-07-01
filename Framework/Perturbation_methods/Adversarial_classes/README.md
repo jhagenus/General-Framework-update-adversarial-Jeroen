@@ -154,18 +154,58 @@ self.control_action_graph = True
 ### Nominal setting
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_basic.gif)
 
-### ADE attack
+### ADE/FDE attack
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_ADE.gif)
-
+To create this attack set:
+```
+self.loss_function_1 = 'ADE_Y_GT_Y_Pred_Max' or 'FDE_Y_GT_Y_Pred_Max'
+self.loss_function_2 = None 
+```
+```
+ self.barrier_function_past = 'Time_specific', 'Trajectory_specific' or 'Time_Trajectory_specific' 
+ self.barrier_function_future = None
+```
 ### Collision attack
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_Collision.gif)
-
-### Max ADE attack
+To create this attack set:
+```
+self.loss_function_1 = 'Collision_Y_pred_tar_Y_GT_ego'
+self.loss_function_2 = None 
+```
+```
+ self.barrier_function_past = 'Time_specific', 'Trajectory_specific' or 'Time_Trajectory_specific' 
+ self.barrier_function_future = None
+```
+### Max ADE/FDE attack
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_max_ADE.gif)
-
+To create this attack set:
+```
+self.loss_function_1 = 'ADE_Y_Perturb_Y_Pred_Max' or 'FDE_Y_Perturb_Y_Pred_Max'
+self.loss_function_2 = None 
+```
+```
+ self.barrier_function_past = 'Time_specific', 'Trajectory_specific' or'Time_Trajectory_specific' 
+ self.barrier_function_future = 'Time_specific', 'Trajectory_specific' or 'Time_Trajectory_specific'
+```
 ### Fake Collision attack
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_Fake_collision.gif)
-
+To create this attack set:
+```
+self.loss_function_1 = 'Collision_Y_pred_tar_Y_GT_ego'
+self.loss_function_2 = None 
+```
+```
+ self.barrier_function_past = 'Time_specific', 'Trajectory_specific' or 'Time_Trajectory_specific' 
+ self.barrier_function_future = 'Time_specific', 'Trajectory_specific' or 'Time_Trajectory_specific'
+```
 ### Hide Collision attack
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_Hide_collision.gif)
-
+To create this attack set:
+```
+self.loss_function_1 = 'Collision_Y_Perturb_tar_Y_GT_ego'
+self.loss_function_2 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
+```
+```
+ self.barrier_function_past = 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' 
+ self.barrier_function_future = None
+```
