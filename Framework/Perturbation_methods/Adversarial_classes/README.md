@@ -46,7 +46,7 @@ self.loss_function_2 = None # Option if not used set to None
 
 | Type attack   | First input   | Second input  | Objective     | Formula       | Name framework (str)  | 
 | ------------- | ------------- | ------------- | ------------- | ------------- |   -------------       |
-| ADE           | $Y_{\text{tar}}$  | $\hat{\tilde{Y}}_{\text{tar}}$ | Maximize distance | $-\frac{1}{T} \sum_{t=1}^{T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - {Y}_{\text{tar}}^{t} \right\|_2$ | 'ADE_Y_GT_Y_Pred_Max' |
+| ADE           | $`{Y_{\text{tar}}$  | $\hat{\tilde{Y}}_{\text{tar}}$ | Maximize distance | $-\frac{1}{T} \sum_{t=1}^{T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - {Y}_{\text{tar}}^{t} \right\|_2}`$ | 'ADE_Y_GT_Y_Pred_Max' |
 | ADE           | $Y_{\text{tar}}$  | $\hat{\tilde{Y}}_{\text{tar}}$ | Minimize distance | $\frac{1}{T} \sum_{t=1}^{T} \left\| \hat{\tilde{Y}}_{\text{tar}}^{t} - {Y}_{\text{tar}}^{t} \right\|_2$ | 'ADE_Y_GT_Y_Pred_Min' |
 | FDE           | $Y_{\text{tar}}$  | $\hat{\tilde{Y}}_{\text{tar}}$ | Maximize distance | $- \left\| \hat{\tilde{Y}}_{\text{tar}}^{T} - {Y}_{\text{tar}}^{T} \right\|_2$ | 'FDE_Y_GT_Y_Pred_Max' |
 | FDE           | $Y_{\text{tar}}$  | $\hat{\tilde{Y}}_{\text{tar}}$ | Minimize distance | $ \left\| \hat{\tilde{Y}}_{\text{tar}}^{T} - {Y}_{\text{tar}}^{T} \right\|_2$ | 'FDE_Y_GT_Y_Pred_Min' |
