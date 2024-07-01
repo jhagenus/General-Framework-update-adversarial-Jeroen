@@ -154,4 +154,4 @@ self.control_action_graph = True
 
 ### ADE attack
 
-![Imgur Image](https://imgur.com/a/kbOk1dx.gif)
+![Imgur](https://imgur.com/a/kbOk1dx.gif)
