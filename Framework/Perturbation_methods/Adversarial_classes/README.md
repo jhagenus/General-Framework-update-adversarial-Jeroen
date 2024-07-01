@@ -151,8 +151,21 @@ self.control_action_graph = True
 
 
 ## Adversarial attack paper settings
+### Nominal setting
+![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_basic.gif)
 
 ### ADE attack
-
 ![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_ADE.gif)
+
+### Collision attack
+![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_Collision.gif)
+
+### Max ADE attack
+![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_max_ADE.gif)
+
+### Fake Collision attack
+![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_Fake_collision.gif)
+
+### Hide Collision attack
+![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_Hide_collision.gif)
 
