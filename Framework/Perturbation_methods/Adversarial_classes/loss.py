@@ -119,6 +119,7 @@ class Loss:
         Returns:
             torch.Tensor: The FDE loss.
         """
+        # norm is over the positions -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Y[:, tar_agent, -1, :].unsqueeze(1) - Pred_t[:, :, -1, :], dim=-1, ord=2), dim=-1)
 
     @staticmethod
@@ -150,6 +151,7 @@ class Loss:
         Returns:
             torch.Tensor: The FDE loss.
         """
+        # norm is over the positions -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Y_new[:, tar_agent, -1, :].unsqueeze(1) - Pred_t[:, :, -1, :], dim=-1, ord=2), dim=-1)
 
     @staticmethod
@@ -181,6 +183,7 @@ class Loss:
         Returns:
             torch.Tensor: The FDE loss.
         """
+        # norm is over the positions -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Y_new[:, tar_agent, -1, :].unsqueeze(1) - Pred_iter_1[:, :, -1, :], dim=-1, ord=2), dim=-1)
 
     @staticmethod
@@ -210,6 +213,7 @@ class Loss:
         Returns:
             torch.Tensor: The FDE loss.
         """
+        # norm is over the positions -> torch.mean is over the number of prediciton
         return torch.mean(torch.linalg.norm(Pred_t[:, :, -1, :] - Pred_iter_1[:, :, -1, :], dim=-1, ord=2), dim=-1)
 
     @staticmethod
@@ -225,6 +229,7 @@ class Loss:
         Returns:
             torch.Tensor: The ADE loss.
         """
+        # norm is over the positions -> inner torch.mean is over the time steps 
         return torch.mean(torch.linalg.norm(Y_new[:, tar_agent, :, :] - Y[:, tar_agent, :, :], dim=-1, ord=2), dim=-1)
 
     @staticmethod
@@ -240,6 +245,7 @@ class Loss:
         Returns:
             torch.Tensor: The FDE loss.
         """
+        # norm is over the positions
         return torch.linalg.norm(Y_new[:, tar_agent, -1, :] - Y[:, tar_agent, -1, :], dim=-1, ord=2)
 
     @staticmethod

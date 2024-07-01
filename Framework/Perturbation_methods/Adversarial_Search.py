@@ -128,40 +128,18 @@ class Adversarial_Search(perturbation_template):
         self.name = self.pert_model.model_file.split(os.sep)[-1][:-4]
 
     def initialize_settings(self):
-        # Plot input data and spline (if plot is True -> plot_spline can be set on True)
-        self.plot_input = False
-
-        # Spline settings
-        self.total_spline_values = 100
-
-        # Plot the loss over the iterations
-        self.plot_loss = True
-
-        # Plot the adversarial scene
-        self.static_adv_scene = True
-        self.animated_adv_scene = False
-
-        # Image neural network
-        self.image_neural_network = False
-
-        # Car size
-        self.car_length = 4.1
-        self.car_width = 1.7
-        self.wheelbase = 2.7
-
         # Initialize parameters
-        self.num_samples = 20  # Defined as (K) in our paper
+        self.num_samples = 20  
         self.max_number_iterations = 30
 
         # Learning decay
         self.gamma = 1
         self.alpha = 0.2
 
-        # Randomized smoothing
-        self.smoothing = False
-        self.num_samples_used_smoothing = 15  # Defined as .. in paper
-        self.sigma = [0.05, 0.1]
-        self.plot_smoothing = False
+        # Car size
+        self.car_length = 4.1
+        self.car_width = 1.7
+        self.wheelbase = 2.7
 
         # ADE attack select (Maximize distance): 'ADE_Y_GT_Y_Pred_Max', 'ADE_Y_Perturb_Y_Pred_Max', 'ADE_Y_Perturb_Y_GT_Max', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Max', 'ADE_Y_pred_and_Y_pred_iteration_1_Max'
         # ADE attack select (Minimize distance): 'ADE_Y_GT_Y_Pred_Min', 'ADE_Y_Perturb_Y_Pred_Min', 'ADE_Y_Perturb_Y_GT_Min', 'ADE_Y_pred_iteration_1_and_Y_Perturb_Min', 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
@@ -169,7 +147,7 @@ class Adversarial_Search(perturbation_template):
         # FDE attack select (Minimize distance): 'FDE_Y_GT_Y_Pred_Min', 'FDE_Y_Perturb_Y_Pred_Min', 'FDE_Y_Perturb_Y_GT_Min', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Min', 'FDE_Y_pred_and_Y_pred_iteration_1_Min'
         # Collision attack select: 'Collision_Y_pred_tar_Y_GT_ego', 'Collision_Y_Perturb_tar_Y_GT_ego'
         self.loss_function_1 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
-        self.loss_function_2 = 'Collision_Y_Perturb_tar_Y_GT_ego'
+        self.loss_function_2 = 'Collision_Y_Perturb_tar_Y_GT_ego' # If not used set to None
 
         # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
         self.barrier_function_past = 'Trajectory_specific'
@@ -180,6 +158,29 @@ class Adversarial_Search(perturbation_template):
         self.distance_threshold_future = 1
         self.log_value_past = 2.5
         self.log_value_future = 2.5
+
+        # Randomized smoothing
+        self.smoothing = False
+        self.num_samples_used_smoothing = 15  
+        self.sigma = [0.05, 0.1]
+        self.plot_smoothing = False
+
+        # Plot the loss over the iterations
+        self.plot_loss = True
+
+        # Image neural network
+        self.image_neural_network = False
+
+        # Left turn settings!!!
+        # Plot input data 
+        self.plot_input = False
+
+        # Plot the adversarial scene
+        self.static_adv_scene = True
+        self.animated_adv_scene = False
+
+        # Spline settings adversarial scene
+        self.total_spline_values = 100
 
         # Time step
         self.dt = self.kwargs['data_param']['dt']
