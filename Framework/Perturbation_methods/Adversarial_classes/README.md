@@ -209,3 +209,40 @@ self.loss_function_2 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
  self.barrier_function_past = 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' 
  self.barrier_function_future = None
 ```
+
+## How to add new attack or regularization function
+### Attack
+1.  In the Loss class, create a new function using the following structure. Use the inputs: X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, barrier_data, tar_agent, and ego_agent. Note that tar_agent and ego_agent are the indices of the target and ego agents, respectively.
+```
+def name_of_loss_function(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, barrier_data, tar_agent, ego_agent):
+    return loss_function
+```
+2. Create a new class with the following structure. The sign depends on the specific objective of the attack.
+```
+class NameOfAttack(LossFunction):
+    def calculate_loss(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
+        return +/- name_of_loss_function(X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent)
+```
+3. Finally, define the name in the get_name function. If you want to use future perturbation, ensure the string includes 'Y_Perturb'.
+```
+elif loss_function == 'name_of_attack':
+    return NameOfAttack()
+```
+
+### Regularization
+1.  In the Loss class, create a new function using the following structure. Use the inputs: X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, barrier_data, tar_agent, and ego_agent. Note that tar_agent and ego_agent are the indices of the target and ego agents, respectively.
+```
+def name_of_regularization_function(X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, barrier_data, tar_agent, ego_agent):
+    return regularization_function
+```
+2. Create a new class with the following structure. The sign depends on the specific objective of the regularization.
+```
+class NameOfRegularization(LossFunction):
+    def calculate_barrier(self, X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent):
+        return +/- name_of_regularization_function(X, X_new, Y, Y_new, Pred_t, Pred_iter_1, tar_agent, ego_agent)
+``` 
+3. Finally, define the name in the barrier_function_name_past_states function or the barrier_function_name_future_states function, depending on which states the regularization is needed for.
+```
+elif barrier_function == 'name_of_regularization':
+    return NameOfRegularization()
+```
