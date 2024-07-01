@@ -1,4 +1,4 @@
-# Adverarial attack generation on Left-Turn dataset
+# Adverarial attack generation
 
 ## General setting
 
