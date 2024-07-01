@@ -148,3 +148,10 @@ For the attack type, 'Adversarial_Control_Action', control action can be animate
 ```
 self.control_action_graph = True
 ```
+
+
+## Adversarial attack paper settings
+
+### ADE attack
+
+![Imgur Image](https://imgur.com/a/kbOk1dx.gif)
