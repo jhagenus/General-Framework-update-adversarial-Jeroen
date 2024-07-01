@@ -154,4 +154,4 @@ self.control_action_graph = True
 
 ### ADE attack
 
-![Imgur](https://imgur.com/a/kbOk1dx.gif)
+![][(https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Animation_ADE.gif)
