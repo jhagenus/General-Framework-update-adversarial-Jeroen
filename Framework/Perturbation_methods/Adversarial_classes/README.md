@@ -88,16 +88,15 @@ self.log_value_past = 1.5
 self.log_value_future = 1.5
 ```
 
-| Type Regularization  | First input   | Second input  | Third input |Objective     | Formula       | Name framework (str)  | 
-| ------------- | ------------- | ------------- | ------------- | ------------- |   ------------- | ------------- |
-| Time specific | ${X}_{\text{tar}}$ | $\tilde{X}_{\text{tar}}$ |  | Past states | $`-\frac{1}{H} {\sum}_{t=-H+1}^{0} \log_{e} ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{t} -  X_{\text{tar}}^{t} \right\|_2)`$ | 'Time_specific'|
-| Trajectory specific | ${X}_{\text{tar}}$ | $\tilde{X}_{\text{tar}}$ | $Z_{\text{tar}}$ | Past states | $`-\frac{1}{H} {\sum}_{t=-H+1}^{0} \log_{e} ( D_{\text{Adversarial\;threshold}} - \min (\min_{t_{\text{eval}} \in \{-H+1, \ldots, 0\}} \left\| \tilde{X}^{t}_{\text{tar}} -  X^{t_{\text{eval}}}_{\text{tar}} \right\|_2, \min_{z \in \{1, \ldots, H-1\}} (d_{\perp} (\tilde{X}_{\text{tar}}^{t},  Z_{\text{tar}}^{z})))`$ | 'Trajectory_specific' |
-| Time and Trajectory specific | ${X}_{\text{tar}}$ | $\tilde{X}_{\text{tar}}$ | $Z_{\text{tar}}$ | Past states | $`-\frac{1}{H} {\sum}_{t=-H+1}^{0} \log_{e} ( D_{\text{Adversarial\;threshold}} - \min (\min_{t_{\text{eval}} \in \{-H+1, \ldots, 0\}} \left\| \tilde{X}^{t}_{\text{tar}} -  X^{t_{\text{eval}}}_{\text{tar}} \right\|_2, \min_{z \in \{1, \ldots, H-1\}} (d_{\perp} (\tilde{X}_{\text{tar}}^{t},  Z_{\text{tar}}^{z}))))  - \log_{e} ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{X}_{\text{tar}}^{T} -  X_{\text{tar}}^{T} \right\|_2)`$ | 'Time_Trajectory_specific' |
-|                               |
-| Time specific | ${Y}_{\text{tar}}$ | $\tilde{Y}_{\text{tar}}$ | |  Future states | $`-\frac{1}{T} {\sum}_{t=1}^{T} \log_{e} ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{Y}_{\text{tar}}^{t} -  Y_{\text{tar}}^{t} \right\|_2)`$ | 'Time_specific' | 
-| Trajectory specific | ${Y}_{\text{tar}}$ | $\tilde{Y}_{\text{tar}}$ | $Z_{\text{tar}}$ | Future states | $`-\frac{1}{T} {\sum}_{t=1}^{T} \log_{e} ( D_{\text{Adversarial\;threshold}} - \min (\min_{t_{\text{eval}} \in \{1, \ldots, T\}} \left\| \tilde{Y}^{t}_{\text{tar}} -  Y^{t_{\text{eval}}}_{\text{tar}} \right\|_2, \min_{z \in \{1, \ldots, T-1\}} (d_{\perp} (\tilde{Y}_{\text{tar}}^{t},  Z_{\text{tar}}^{z})))) `$ | 'Trajectory_specific' |
-| Time and Trajectory specific | ${Y}_{\text{tar}}$ | $\tilde{Y}_{\text{tar}}$ | $Z_{\text{tar}}$ | Future states | $`-\frac{1}{T} {\sum}_{t=1}^{T} \log_{e} ( D_{\text{Adversarial\;threshold}} - \min (\min_{t_{\text{eval}} \in \{1, \ldots, T\}} \left\| \tilde{Y}^{t}_{\text{tar}} -  Y^{t_{\text{eval}}}_{\text{tar}} \right\|_2, \min_{z \in \{1, \ldots, T-1\}} (d_{\perp} (\tilde{Y}_{\text{tar}}^{t},  Z_{\text{tar}}^{z})))) - \log_{e} ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{Y}_{\text{tar}}^{T} -  Y_{\text{tar}}^{T} \right\|_2)`$ | 'Time_Trajectory_specific' |
+| Type Regularization (Reference figure)  | Clean data   | Preturbed data | Edges clean data | First timestep |  Last timestep | Critical timestep | Formula       | Name framework (str)  | 
+| ------------- | ------------- | ------------- | ------------- | ------------- |   ------------- | ------------- | ------------- | ------------- | 
+| Time specific (A) | ${S}_{\text{tar}}$ | $\tilde{S}_{\text{tar}}$ |  |  ${t}_{0}$ | ${t}_{1}$  |   | $`-\frac{1}{t_{1}-{t}_{0}+1} {\sum}_{t={t}_{0}}^{{t}_{1}} \log_{e} (D_{\text{Adversarial\;threshold}} - \left\| \tilde{S}_{\text{tar}}^{t} -  S_{\text{tar}}^{t} \right\|_2)`$ | 'Time_specific'|
+| Trajectory specific (B) | ${S}_{\text{tar}}$ | $\tilde{S}_{\text{tar}}$ | $Z_{\text{tar}}$ |  ${t}_{0}$ | ${t}_{1}$   |   | $`-\frac{1}{t_{1}-{t}_{0}+1} {\sum}_{t={t}_{0}}^{t_{1}} \log_{e} (D_{\text{Adversarial\;threshold}} - \min (\min_{t_{\text{eval}} \in \{{t}_{0}, \ldots, t_{1}\}} \left\| \tilde{S}^{t}_{\text{tar}} -  S^{t_{\text{eval}}}_{\text{tar}} \right\|_2, \min_{z \in \{1, \ldots, H + T - 1\}} (d_{\perp} (\tilde{S}_{\text{tar}}^{t},  Z_{\text{tar}}^{z})))`$ | 'Trajectory_specific' |
+| Time and Trajectory specific (C) | ${S}_{\text{tar}}$ | $\tilde{S}_{\text{tar}}$ | $Z_{\text{tar}}$ | ${t}_{0}$  |  ${t}_{1}$  |  ${t}_{critical}$ | $`-\frac{1}{t_{1}-{t}_{0}+1} {\sum}_{t={t}_{0}}^{t_{1}} \log_{e} (D_{\text{Adversarial\;threshold}} - \min (\min_{t_{\text{eval}} \in \{{t}_{0}, \ldots, t_{1}\}} \left\| \tilde{S}^{t}_{\text{tar}} -  S^{t_{\text{eval}}}_{\text{tar}} \right\|_2, \min_{z \in \{1, \ldots, H + T - 1\}} (d_{\perp} (\tilde{S}_{\text{tar}}^{t},  Z_{\text{tar}}^{z})))  - \log_{e} ( D_{\text{Adversarial\;threshold}} - \left\| \tilde{S}_{\text{tar}}^{t_{critical}} -  S_{\text{tar}}^{t_{critical}} \right\|_2)`$ | 'Time_Trajectory_specific' |
 
+**_NOTE:_**  Regularization for observed states $`{t}_{0} = -H + 1`$, $`{t}_{1} = 0`$, and $`{t}_{critical} = 0`$. Regularization for future states $`{t}_{0} = 1`$, $`{t}_{1} = T`$, and $`{t}_{critical} = T`$
+
+![image](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/animated_gif/Regularization_with_third_term-1.png)
 ## Gaussian smoothing
 
 ### Settings
@@ -211,6 +210,7 @@ self.loss_function_2 = 'ADE_Y_pred_and_Y_pred_iteration_1_Min'
 ```
 
 ## How to add new attack or regularization function
+[Modify here](https://github.com/jhagenus/General-Framework-update-adversarial-Jeroen/blob/main/Framework/Perturbation_methods/Adversarial_classes/loss.py)
 ### Attack
 1.  In the Loss class, create a new function using the following structure. Use the inputs: X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, barrier_data, tar_agent, and ego_agent. Note that tar_agent and ego_agent are the indices of the target and ego agents, respectively.
 ```
