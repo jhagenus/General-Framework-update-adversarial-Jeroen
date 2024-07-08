@@ -204,7 +204,7 @@ class Adversarial_Control_Action(perturbation_template):
         # Do a assertion check on settings
         self._assertion_check()
 
-    def perturb_batch(self, X, Y, T, agent, Domain, physical_constraints):
+    def perturb_batch(self, X, Y, T, agent, Domain):
         '''
         This function takes a batch of data and generates perturbations.
 
@@ -240,7 +240,7 @@ class Adversarial_Control_Action(perturbation_template):
         '''
 
         # Prepare the data (ordering/spline/edge_cases)
-        X, Y = self._prepare_data(X, Y, T, agent, Domain, physical_constraints)
+        X, Y = self._prepare_data(X, Y, T, agent, Domain)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
         X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self._prepare_data_attack(
@@ -522,7 +522,7 @@ class Adversarial_Control_Action(perturbation_template):
 
         return img, img_m_per_px
 
-    def _prepare_data(self, X, Y, T, agent, Domain, physical_constraints):
+    def _prepare_data(self, X, Y, T, agent, Domain):
         """
         Prepares data for further processing by removing NaN values,
         flipping dimensions of the agent data, and storing relevant
@@ -534,7 +534,6 @@ class Adversarial_Control_Action(perturbation_template):
         T (int): Type of agent observed.
         agent (object): It includes strings with the names of the agents.
         Domain (object): A domain object specifying the context of the agents
-        physical_constraints (object): A physical constraints object specifying the max acceleration of the agents used for clamping
 
         Returns:
         X (array-like): Processed observed feature matrix.
@@ -546,7 +545,7 @@ class Adversarial_Control_Action(perturbation_template):
         Y = Helper.remove_nan_values(data=Y)
 
         # set clamping values for absolute acceleration
-        self.epsilon_acc_absolute = physical_constraints
+        self.epsilon_acc_absolute = self.contstraints
 
         # Flip dimensions agents
         X, Y, self.agent_order, self.tar_agent_index, self.ego_agent_index = Helper.flip_dimensions(
@@ -618,6 +617,18 @@ class Adversarial_Control_Action(perturbation_template):
         '''
 
         self.batch_size = 1
+
+    def get_constraints(self):
+        '''
+        This function returns the constraints for the data to be perturbed.
+
+        Returns
+        -------
+        def
+            A function used to calculate constraints.
+
+        '''
+        return Helper.determine_min_max_values_control_actions_acceleration
 
     def requirerments(self):
         '''

@@ -188,7 +188,7 @@ class Adversarial_Search(perturbation_template):
         # Do a assertion check on settings
         self._assertion_check()
 
-    def perturb_batch(self, X, Y, T, agent, Domain, constraints):
+    def perturb_batch(self, X, Y, T, agent, Domain):
         '''
         This function takes a batch of data and generates perturbations.
 
@@ -224,7 +224,7 @@ class Adversarial_Search(perturbation_template):
         '''
 
         # Prepare the data (ordering/spline/edge_cases)
-        X, Y = self._prepare_data(X, Y, T, agent, Domain, constraints)
+        X, Y = self._prepare_data(X, Y, T, agent, Domain)
 
         # Prepare data for adversarial attack (tensor/image prediction model)
         X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self._prepare_data_attack(
@@ -470,7 +470,7 @@ class Adversarial_Search(perturbation_template):
 
         return img, img_m_per_px
 
-    def _prepare_data(self, X, Y, T, agent, Domain, constraints):
+    def _prepare_data(self, X, Y, T, agent, Domain):
         """
         Prepares data for further processing by removing NaN values,
         flipping dimensions of the agent data, and storing relevant
@@ -497,7 +497,7 @@ class Adversarial_Search(perturbation_template):
             X=X, Y=Y, agent=agent)
 
         self.physical_bounds = Helper.get_dimensions_physical_bounds(
-            constraints=constraints, agent_order=self.agent_order)
+            constraints=self.contstraints, agent_order=self.agent_order)
 
         self.T = T
         self.Domain = Domain
@@ -564,6 +564,18 @@ class Adversarial_Search(perturbation_template):
         '''
 
         self.batch_size = 1
+    
+    def get_constraints(self):
+        '''
+        This function returns the constraints for the data to be perturbed.
+
+        Returns
+        -------
+        def
+            A function used to calculate constraints.
+
+        '''
+        return Search.get_physical_constraints
 
     def requirerments(self):
         '''

@@ -94,13 +94,12 @@ class perturbation_template():
         Y_pert_sort = np.copy(Y_sort)
 
         dt = self.kwargs['data_param']['dt']
-        
-        if self.kwargs['attack'] == 'Adversarial_Search':
-            contstraints = Search.get_physical_constraints(X_pert_sort, Y_pert_sort, dt)
-        elif self.kwargs['attack'] == 'Adversarial_Control_Action':
-            contstraints = Helper.determine_min_max_values_control_actions_acceleration(X_pert_sort, Y_pert_sort, dt) # get min max values for acceleration (5% highest and lowest are filtered out)
-        else:
-            contstraints = None
+
+        # Get constraints of datasets
+        contstraints = self.get_constraints()
+
+        if contstraints is not None:
+            self.contstraints = contstraints(X_pert_sort, Y_pert_sort, dt)
 
         # Go through the data 
         num_batches = int(np.ceil(X.shape[0] / self.batch_size))
@@ -110,11 +109,10 @@ class perturbation_template():
 
             samples = np.arange(i_start, i_end)
             
-
             if N_O_sort[samples].min() not in [14]:
                 continue
             
-            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples], contstraints)
+            X_pert_sort[samples], Y_pert_sort[samples] = self.perturb_batch(X_sort[samples], Y_sort[samples], T_sort[samples], Agents, Domain_sort.iloc[samples])
 
 
         sort_indices_inverse = np.argsort(sorted_indices)

@@ -555,6 +555,17 @@ class Adversarial_Position(perturbation_template):
 
         self.batch_size = 1
 
+    def get_constraints(self):
+        '''
+        This function returns the constraints for the data to be perturbed.
+
+        Returns
+        -------
+        None
+        '''
+        return None
+
+
     def requirerments(self):
         '''
         This function returns the requirements for the data to be perturbed.
