@@ -12,6 +12,8 @@ import matplotlib
 from matplotlib.colors import LinearSegmentedColormap
 import time
 import seaborn as sns
+from pathlib import Path
+from utils.memory_utils import get_total_memory, get_used_memory
 
 # allow for latex code
 # from matplotlib import rc
@@ -78,8 +80,9 @@ class Experiment():
         print('Processor memories:')
         # CPU
         CPU_mem = psutil.virtual_memory()
-        cpu_total = CPU_mem.total / 2 ** 30
-        cpu_used  = CPU_mem.used / 2 ** 30
+        self.total_memory = get_total_memory()
+        cpu_total = self.total_memory / 2 ** 30
+        cpu_used  = get_used_memory() / 2 ** 30
         print('CPU: {:5.2f}/{:5.2f} GB are available'.format(cpu_total - cpu_used, cpu_total))
 
         # GPU
@@ -121,7 +124,6 @@ class Experiment():
         
         self.Data_sets   = Data_sets
         self.Data_params = Data_params
-        self.Metrics     = Metrics
         
         # Check if multiple splitter repetitions have been provided
         self.Splitters = []
@@ -140,50 +142,45 @@ class Experiment():
             
             if 'repetition' in split_dict.keys():
                 reps = split_dict['repetition']
-                if isinstance(reps, list):
-                    for i, rep in enumerate(reps):
-                        assert (isinstance(rep, int) or
-                                isinstance(rep, str) or
-                                isinstance(rep, tuple)), "Split repetition has a wrong format."
-                        if isinstance(rep, tuple):
-                            assert len(rep) > 0, "Some repetition information must be given."
-                            for rep_part in rep:
-                                assert (isinstance(rep_part, int) or
-                                        isinstance(rep_part, str)), "Split repetition has a wrong format."
-                        else:
-                            reps[i] = (rep,)
-                            
-                else:
-                    assert (isinstance(reps, int) or
-                            isinstance(reps, str) or
-                            isinstance(reps, tuple)), "Split repetition has a wrong format."
-                    if isinstance(reps, tuple):
-                        assert len(reps) > 0, "Some repetition information must be given."
-                        for rep_part in reps:
+                if not isinstance(reps, list):
+                    reps = [reps]
+
+                for i, rep in enumerate(reps):
+                    assert (isinstance(rep, int) or
+                            isinstance(rep, str) or
+                            isinstance(rep, tuple)), "Split repetition has a wrong format."
+                    if isinstance(rep, tuple):
+                        assert len(rep) > 0, "Some repetition information must be given."
+                        for rep_part in rep:
                             assert (isinstance(rep_part, int) or
                                     isinstance(rep_part, str)), "Split repetition has a wrong format."
                     else:
-                        reps = (reps,)
-                        
-                    reps = [reps]
+                        reps[i] = (rep,)
             else:
                 reps = [(0,)]
-
+            
             if 'train_pert' in split_dict.keys():
                 train_pert = split_dict['train_pert']
                 assert isinstance(train_pert, bool), "train_pert must be a boolean."
             else:
                 train_pert = False
-            
+
             if 'test_pert' in split_dict.keys():
                 test_pert = split_dict['test_pert']
                 assert isinstance(test_pert, bool), "test_pert must be a boolean."
             else:
                 test_pert = False
+
+            if 'train_on_test' in split_dict.keys():
+                train_on_test = split_dict['train_on_test']
+                assert isinstance(train_on_test, bool), "train_on_test must be a boolean."
+            else:
+                train_on_test = False
                 
+                    
             for rep in reps:
                 new_split_dict = {'Type': splitter_name, 'repetition': rep, 'test_part': splitter_tp, 
-                                  'train_pert': train_pert, 'test_pert': test_pert}
+                                  'train_pert': train_pert, 'test_pert': test_pert, 'train_on_test': train_on_test}
                 self.Splitters.append(new_split_dict)
         
         self.num_splitters = len(self.Splitters)
@@ -205,7 +202,24 @@ class Experiment():
                 raise TypeError("The provided model must be string or dictionary")
             
             self.Models.append(model_dict)
-                
+
+        # Check if Metrics are all depicted correctly
+        self.Metrics = []
+        for metric in Metrics:
+            if isinstance(metric, str):
+                metric_dict = {'metric': metric, 'kwargs': {}}
+            elif isinstance(metric, dict):
+                assert 'metric' in metric.keys(), "No metric name is provided."
+                assert isinstance(metric['metric'], str), "A metric is set as a string."
+                metric_dict = metric
+                if not 'kwargs' in metric.keys():
+                    metric_dict['kwargs'] = {}
+                else:
+                    assert isinstance(metric_dict['kwargs'], dict), "The kwargs value must be a dictionary."
+            else:
+                raise TypeError("The provided metric must be string or dictionary")
+            
+            self.Metrics.append(metric_dict)
         
         self.provided_modules = True
         
@@ -213,12 +227,14 @@ class Experiment():
     def set_parameters(self, model_for_path_transform,
                        num_samples_path_pred = 100, 
                        enforce_num_timesteps_out = False, 
-                       enforce_prediction_time = True, 
+                       enforce_prediction_times = True, 
                        exclude_post_crit = True,
                        allow_extrapolation = True,
-                       dynamic_prediction_agents = False,
+                       agents_to_predict = 'predefined',
                        overwrite_results = False,
-                       evaluate_on_train_set = True):
+                       save_predictions = True,
+                       evaluate_on_train_set = True,
+                       allow_longer_predictions = True):
         
         model_to_path_module = importlib.import_module(model_for_path_transform)
         model_class_to_path = getattr(model_to_path_module, model_for_path_transform)
@@ -232,13 +248,13 @@ class Experiment():
         
         assert isinstance(enforce_num_timesteps_out, bool), "enforce_num_timesteps_out should be a boolean."
         
-        assert isinstance(enforce_prediction_time, bool), "enforce_prediction_time should be a boolean."
+        assert isinstance(enforce_prediction_times, bool), "enforce_prediction_time should be a boolean."
         
         assert isinstance(exclude_post_crit, bool), "exclude_post_crit should be a boolean."
         
         assert isinstance(allow_extrapolation, bool), "allow_extrapolation should be a boolean."
         
-        assert isinstance(dynamic_prediction_agents, str), "dynamic_prediction_agents should be a string."
+        assert isinstance(agents_to_predict, str), "dynamic_prediction_agents should be a string."
         
         # make it backward compatiable
         if isinstance(overwrite_results, bool):
@@ -253,11 +269,16 @@ class Experiment():
         
         assert isinstance(evaluate_on_train_set, bool), "evaluate_on_train_set should be a boolean."
         
+
+        # Save parameters needed in actual data_set_template
         self.parameters = [model_class_to_path, num_samples_path_pred, 
-                           enforce_num_timesteps_out, enforce_prediction_time, 
+                           enforce_num_timesteps_out, enforce_prediction_times, 
                            exclude_post_crit, allow_extrapolation, 
-                           dynamic_prediction_agents, overwrite_results]
+                           agents_to_predict, overwrite_results, 
+                           allow_longer_predictions, save_predictions,  
+                           self.total_memory]
         
+        # Save the remaining parameters
         self.evaluate_on_train_set = evaluate_on_train_set
         
         self.provided_setting = True
@@ -284,21 +305,17 @@ class Experiment():
             for beh in data_set.Behaviors:
                 if beh != data_set.Behaviors[-1]:
                     if len(data_set.Behaviors) > 2:
-                        sample_string += '{}/{} '.format(data_set.Output_A[beh].to_numpy().sum(), 
+                        sample_string += '{}/{} '.format(data_set.num_behaviors_out[beh], 
                                                          data_set.num_behaviors[beh]) + beh + ', '
                     else:
-                        sample_string += '{}/{} '.format(data_set.Output_A[beh].to_numpy().sum(), 
+                        sample_string += '{}/{} '.format(data_set.num_behaviors_out[beh], 
                                                          data_set.num_behaviors[beh]) + beh + ' '
                 else:                            
-                    sample_string += 'and {}/{} '.format(data_set.Output_A[beh].to_numpy().sum(), 
+                    sample_string += 'and {}/{} '.format(data_set.num_behaviors_out[beh], 
                                                          data_set.num_behaviors[beh]) + beh        
             sample_string += ' samples are admissible.'
         else:
-            if hasattr(data_set, 'Output_T'):
-                sample_string = '{}/{} samples are admissible.'.format(len(data_set.Output_T), 
-                                                                       data_set.num_behaviors[0])
-            else:
-                sample_string = ''
+            sample_string = ''
         print(sample_string)
         print('')
         
@@ -351,12 +368,10 @@ class Experiment():
             # Get data set class
             data_set = data_interface(data_set_dict, self.parameters)
             
-
             # Go through each type of data params
             for j, data_param in enumerate(self.Data_params):
                 # Reset data set
                 data_set.reset()
-
                 # Select or load repective datasets
                 data_failure = data_set.get_data(**data_param)
                 
@@ -369,17 +384,18 @@ class Experiment():
                 # Go through each splitting method
                 for k, splitter_param in enumerate(self.Splitters):
                     # Get splitting method class
-                    splitter_name = splitter_param['Type']
-                    splitter_rep = splitter_param['repetition']
-                    splitter_tp = splitter_param['test_part']
+                    splitter_name       = splitter_param['Type']
+                    splitter_rep        = splitter_param['repetition']
+                    splitter_tp         = splitter_param['test_part']
                     splitter_train_pert = splitter_param['train_pert']
-                    splitter_test_pert = splitter_param['test_pert']
-                        
+                    splitter_test_pert  = splitter_param['test_pert']
+                    splitter_tot        = splitter_param['train_on_test']
+
                     splitter_module = importlib.import_module(splitter_name)
                     splitter_class = getattr(splitter_module, splitter_name)
-                    
+
                     # Initialize Splitting method
-                    splitter = splitter_class(data_set, splitter_tp, splitter_rep, splitter_train_pert, splitter_test_pert)
+                    splitter = splitter_class(data_set, splitter_tp, splitter_rep, splitter_train_pert, splitter_test_pert, splitter_tot)
                     
                     # Check if splitting method can be used
                     split_failure = splitter.check_splitability()
@@ -422,40 +438,10 @@ class Experiment():
                         # Train the model on the given training set
                         model.train()
                         
-                        # Make predictions on the given testing set
-                        output = model.predict()
-                        
-                        # Get the type of prediction in this output
-                        model_type = model.get_output_type()
-                        
-                        # Go through each metric used on the current prediction time
-                        for m, metric_name in enumerate(self.Metrics):
-                            # Get metric class
-                            mwtric_module = importlib.import_module(metric_name)
-                            metric_class = getattr(mwtric_module, metric_name)  
-                            
-                            # Initialize the metric
-                            metric = metric_class(data_set, splitter, model)
-                            
-                            # Test if metric is applicable
-                            metric_failure = metric.check_applicability()
-                            
-                            # print metric status to output
-                            self.print_metric_status(metric, metric_failure)
-                            
-                            # Do not use metric if it cannot be applied
-                            if metric_failure is not None:
-                                continue
-                            
-                            # Get the output type the metric works on:
-                            metric_type = metric.get_output_type()
-                            
-                            # Allow for possible transformation of prediction
-                            output_trans = data_set.transform_outputs(output, model_type, 
-                                                                      metric_type, model.pred_file)
-                            
-                            # Evaluate transformed output
-                            metric.evaluate_prediction(output_trans)
+                        # For large dataset, the separate calculation of the predictions and metrics is not
+                        # possible due to memory constraints. Therefore, the predictions and evaluations are calculated
+                        # at the same time. For this, we have to create a new function called predict_and_evaluate()
+                        model.predict_and_evaluate(self.Metrics, self.print_metric_status)
     
     #%% Loading results
     def load_results(self, plot_if_possible = True, return_train_results = False, return_train_loss = False):
@@ -476,7 +462,8 @@ class Experiment():
         Metrics_minimize = [] 
         Metrics_log_scale = []
 
-        for metric_name in self.Metrics:
+        for metric_dict in self.Metrics:
+            metric_name = metric_dict['metric']
             metric_module = importlib.import_module(metric_name)
             metric_class = getattr(metric_module, metric_name)
             Metrics_minimize.append(metric_class.get_opt_goal() == 'minimize')
@@ -507,33 +494,35 @@ class Experiment():
                                        self.num_models),
                                       np.ndarray) * np.nan
 
-            
-            # Get index of result array at which comparable result is saved
         for i, data_set_dict in enumerate(self.Data_sets):
-            # Get data set class
+                # Get data set class
             data_set = data_interface(data_set_dict, self.parameters)
 
             for j, data_param in enumerate(self.Data_params):
+                data_set.reset()
                 data_set.get_data(**data_param)
                 for k, splitter_param in enumerate(self.Splitters):
-                    splitter_name = splitter_param['Type']
-                    splitter_rep = splitter_param['repetition']
-                    splitter_tp = splitter_param['test_part']
+                    splitter_name       = splitter_param['Type']
+                    splitter_rep        = splitter_param['repetition']
+                    splitter_tp         = splitter_param['test_part']
                     splitter_train_pert = splitter_param['train_pert']
-                    splitter_test_pert = splitter_param['test_pert']
-                        
+                    splitter_test_pert  = splitter_param['test_pert']
+                    splitter_tot        = splitter_param['train_on_test']
+
                     splitter_module = importlib.import_module(splitter_name)
                     splitter_class = getattr(splitter_module, splitter_name)
-                    
-                    splitter = splitter_class(data_set, splitter_tp, splitter_rep, splitter_train_pert, splitter_test_pert)
-                    
+
+                    splitter = splitter_class(data_set, splitter_tp, splitter_rep, splitter_train_pert, splitter_test_pert, splitter_tot)
+
                     # Get the name of the splitmethod used.
                     splitter_str = splitter.get_name()['file'] + splitter.get_rep_str()
 
-                    for m, metric_name in enumerate(self.Metrics):
+                    for m, metric_dict in enumerate(self.Metrics):
+                        metric_name = metric_dict['metric']
+                        metric_kwargs = metric_dict['kwargs']
                         metric_module = importlib.import_module(metric_name)
                         metric_class = getattr(metric_module, metric_name)
-                        metric = metric_class(data_set, splitter, None)
+                        metric = metric_class(metric_kwargs, data_set, splitter, None)
                             
                         create_plot = plot_if_possible and metric.allows_plot()
                         if create_plot:
@@ -550,14 +539,19 @@ class Experiment():
                             
                             # Initialize the model
                             model = model_class(model_kwargs, data_set, splitter, self.evaluate_on_train_set)
+                            model_str = model.get_name()['file']
+                            if 'pretrained' in model.model_kwargs.keys():
+                                pretrained_path = model.model_kwargs['pretrained']                            
+                                pretrained_folder = Path(pretrained_path).parent.parent.name
+                                model_str += '--pretrain_' + pretrained_folder
                             
                             results_file_name = (data_set.data_file[:-4] + '--' + 
                                                  # Add splitting method
                                                  splitter_str + '--' + 
                                                  # Add model name
-                                                 model.get_name()['file']  + '--' + 
+                                                 model_str + '--' + 
                                                  # Add metric name
-                                                 metric_class.get_name()['file']  + '.npy')
+                                                 metric.get_name()['file']  + '.npy')
                             
                             results_file_name = results_file_name.replace(os.sep + 'Data' + os.sep,
                                                                           os.sep + 'Metrics' + os.sep)
@@ -582,8 +576,8 @@ class Experiment():
                                         figure_file = data_set.change_result_directory(results_file_name, 'Metric_figures', '')
                                         
                                         # remove model name from figure file
-                                        num = 6 + len(model.get_name()['file']) + len(metric_class.get_name()['file'])
-                                        figure_file = figure_file[:-num] + metric_class.get_name()['file'] + '.pdf'
+                                        num = 6 + len(model.get_name()['file']) + len(metric.get_name()['file'])
+                                        figure_file = figure_file[:-num] + metric.get_name()['file'] + '.pdf'
                                         
                                         os.makedirs(os.path.dirname(figure_file), exist_ok = True)
                                         saving_figure = l == (self.num_models - 1)
@@ -595,9 +589,15 @@ class Experiment():
                                 
                             if m == 0 and return_train_loss:
                                 if model.provides_epoch_loss():
+                                    # Adjust splitter_str
+                                    splitter_str_new = splitter_str + ''
+                                    if '_pert=' in splitter_str_new:
+                                        pert_split = splitter_str_new.split('_pert=')
+                                        splitter_str_new = pert_split[0] + '_pert=' + pert_split[1][0] + pert_split[1][2:]
+
                                     train_loss_file_name = (data_set.data_file[:-4] + '--' + 
                                                             # Add splitting method
-                                                            splitter_str + '--' +  
+                                                            splitter_str_new + '--' +  
                                                             # Add model name
                                                             model.get_name()['file']  + '--train_loss.npy')
                                     
@@ -734,7 +734,6 @@ class Experiment():
         assert self.results_loaded, "No results are loaded yet. Use self.load_results()."
         
         T0_names = {'start':     r'Earliest',
-                    'all':       r'All',
                     'col_equal': r'Fixed-time (equal)',
                     'col_set':   r'Fixed-time',
                     'crit':      r'Last useful',
@@ -839,11 +838,14 @@ class Experiment():
         
         
         # start drawing the individual plots
-        for j, metric_name in enumerate(self.Metrics):
+        for j, metric_dict in enumerate(self.Metrics):
+            metric_name = metric_dict['metric']
+            metric_kwargs = metric_dict['kwargs']
             metric_module = importlib.import_module(metric_name)
             metric_class = getattr(metric_module, metric_name)
+            metric = metric_class(metric_kwargs, None, None, None)
             
-            Figure_string += ' \n' + r'    % Draw the metric ' + metric_class.get_name()['print'] + ' \n'
+            Figure_string += ' \n' + r'    % Draw the metric ' + metric.get_name()['print'] + ' \n'
             
             Metric_results = self.Results[..., j]
             metric_is_log  = self.Metrics_log_scale[j]
@@ -867,9 +869,13 @@ class Experiment():
                 
                 Plot_string = ''
                 
-                Plot_string += (' \n' + r'    % Draw the metric ' + metric_class.get_name()['print'] + 
-                                ' for ' + T0_names[data_set.t0_type] + 
-                                ' on dataset ' + data_set.get_name()['print'] +  ' \n')
+                if data_set.t0_type[:3] == 'all':
+                    t0_name = 'A' + data_set.t0_type[1:] 
+                else:
+                    t0_name = T0_names[data_set.t0_type]
+
+                Plot_string += (' \n' + r'    % Draw the metric ' + metric.get_name()['print'] + 
+                                ' for ' + t0_name + ' on dataset ' + data_set.get_name()['print'] +  ' \n')
                 
                 
                 Results_jk = Metric_results[k]
@@ -972,7 +978,7 @@ class Experiment():
                                           '(1.25, {:0.3f}) '.format(y_value + plot_height) + 
                                           r'{$' + '{}'.format(max_value) + r'$};' + ' \n') 
                     # Add metric name
-                    metric_name_latex = metric_class.get_name()['latex']
+                    metric_name_latex = metric.get_name()['latex']
                     
                     if metric_class.get_opt_goal() == 'minimize':
                         metric_name_latex += r' $\downarrow'
@@ -1126,14 +1132,14 @@ class Experiment():
                 x0_nI = legend_x_offset + i * legend_entry_width
                 if 60 < num_para_values:
                     Figure_string += self.write_single_data_point(allowed_width + inter_plot_space - y0_nI - legend_y_offset, 
-                                                                  x0_nI + 0.3, dx, Colors[i], 'Critical_split')
+                                                                  x0_nI + 0.3, dx, dx, Colors[i], 'Critical_split', False)
                     Figure_string += (r'        \node[black, rotate = 90, inner sep = 0, right, font = \footnotesize] at ' + 
                                       '({:0.3f}, {:0.3f}) '.format(allowed_width + inter_plot_space - y0_nI - legend_y_offset, 
                                                                    x0_nI + 0.6) + r'{$n_I =' + str(data_params['num_timesteps_in'][0]) + r'$};' + ' \n')
                     
                 else:
                     # Random split
-                    Figure_string += self.write_single_data_point(x0_nI + 0.3, y0_nI + legend_y_offset, dx, Colors[i], 'Critical_split')
+                    Figure_string += self.write_single_data_point(x0_nI + 0.3, y0_nI + legend_y_offset, dx, dx, Colors[i], 'Critical_split', False)
                     Figure_string += (r'        \node[black, inner sep = 0, right, font = \footnotesize] at ' + 
                                       '({:0.3f}, {:0.3f}) '.format(x0_nI + 0.6, y0_nI + legend_y_offset) + 
                                       r'{$n_I =' + str(data_params['num_timesteps_in'][0]) + r'$};' + ' \n')
@@ -1147,14 +1153,14 @@ class Experiment():
                 
                 if 60 < num_para_values:
                     Figure_string += self.write_single_data_point(allowed_width + inter_plot_space - y0_st - legend_y_offset, 
-                                                                  x0_st + 0.3, dx, 'black', split_type)
+                                                                  x0_st + 0.3, dx, dx, 'black', split_type, False)
                     Figure_string += (r'        \node[black, rotate = 90, inner sep = 0, right, font = \footnotesize] at ' + 
                                       '({:0.3f}, {:0.3f}) '.format(allowed_width + inter_plot_space - y0_st - legend_y_offset, 
                                                                    x0_st + 0.6) + r'{' + split_name + r'};' + ' \n')
                     
                 else:
                     # Random split
-                    Figure_string += self.write_single_data_point(x0_st + 0.3, y0_st + legend_y_offset, dx, 'black', split_type)
+                    Figure_string += self.write_single_data_point(x0_st + 0.3, y0_st + legend_y_offset, dx, dx, 'black', split_type, False)
                     Figure_string += (r'        \node[black, inner sep = 0, right, font = \footnotesize] at ' + 
                                       '({:0.3f}, {:0.3f}) '.format(x0_st + 0.6, y0_st + legend_y_offset) + 
                                       r'{' + split_name + r'};' + ' \n')
@@ -1188,9 +1194,13 @@ class Experiment():
             
         for k, table_name in enumerate(Table_iterator):
             if dataset_row:
-                table_module = importlib.import_module(table_name)
-                table_class = getattr(table_module, table_name)
-                table_filename = table_class.get_name()['file']
+                table_name_name = table_name['metric']
+                table_name_kwargs = table_name['kwargs']
+                table_module = importlib.import_module(table_name_name)
+                table_class = getattr(table_module, table_name_name)
+                table_object = table_class(table_name_kwargs, None, None, None)
+
+                table_filename = table_object.get_name()['file']
             else:
                 table_item = data_interface(table_name, self.parameters)
                 table_filename = table_item.get_name()['file']
@@ -1263,16 +1273,19 @@ class Experiment():
                         row_item = data_interface(row_name, self.parameters)
                         row_latexname = row_item.get_name()['latex']
                     else:
-                        row_module = importlib.import_module(row_name)
-                        row_class  = getattr(row_module, row_name)
+                        row_name_name = row_name['metric']
+                        row_name_kwargs = row_name['kwargs']
+                        row_module = importlib.import_module(row_name_name)
+                        row_class  = getattr(row_module, row_name_name)
+                        row_object = row_class(row_name_kwargs, None, None, None)
                         
-                        row_latexname = row_class.get_name()['latex']
-                        if row_class.get_opt_goal() == 'minimize':
+                        row_latexname = row_object.get_name()['latex']
+                        if row_object.get_opt_goal() == 'minimize':
                             row_latexname += r' $\downarrow'
                         else:
                             row_latexname += r' $\uparrow'
                             
-                        metric_bounds = row_class.metric_boundaries()
+                        metric_bounds = row_object.metric_boundaries()
                         if metric_bounds[0] is not None:
                             row_latexname += r'_{' + str(metric_bounds[0]) + r'}'
                         else:
@@ -1450,7 +1463,7 @@ class Experiment():
         
         # Prevent model retraining
         parameters = [param for param in self.parameters]
-        parameters[-1] = 'no'
+        parameters[7] = 'no'
         
         data_set = data_interface(data_set_dict, parameters)
         
@@ -1485,14 +1498,16 @@ class Experiment():
             print('------------------------------------------------------------------', flush = True)
             sample_string = 'In the current experiment, the following splitters are available:'
             for i, s_param in enumerate(self.Splitters):
-                s_name  = s_param['Type']
-                s_rep = s_param['repetition']
-                s_tp = s_param['test_part']
-                s_trainp = s_param['train_part']
-                s_testp = s_param['test_part']
-                
+                s_name   = s_param['Type']
+                s_rep    = s_param['repetition']
+                s_tp     = s_param['test_part']                
+                s_trainp = s_param['train_pert']
+                s_testp  = s_param['test_pert']
+                s_tot    = s_param['train_on_test']
+
                 s_class = getattr(importlib.import_module(s_name), s_name)
-                s_inst  = s_class(None, s_tp, s_rep, s_trainp, s_testp)
+                s_inst  = s_class(None, s_tp, s_rep, s_trainp, s_testp, s_tot)
+                
                 sample_string += '\n{}: '.format(i + 1) + s_inst.get_name()['print']  
             print(sample_string, flush = True)  
             print('Select the desired dataset by typing a number between 1 and {} for the specific splitter): '.format(self.num_splitters), flush = True)
@@ -1517,13 +1532,13 @@ class Experiment():
         split_class = getattr(importlib.import_module(split_name), split_name)
         
         # Use splitting method to get train and test samples
-        split_rep = split_param['repetition']
-        split_tp = split_param['test_part']
-        split_testp = split_param['test_part']
-        split_trainp = split_param['train_part']
-        
-        
-        splitter = split_class(data_set, split_tp, split_rep, split_trainp, split_testp)
+        split_rep    = split_param['repetition']
+        split_tp     = split_param['test_part']
+        split_testp  = split_param['test_pert']
+        split_trainp = split_param['train_pert']
+        split_tot    = split_param['train_on_test'] 
+
+        splitter = split_class(data_set, split_tp, split_rep, split_trainp, split_testp, split_tot)
         splitter.split_data() 
         
         # Get test index 
@@ -1532,19 +1547,10 @@ class Experiment():
         else:
             Index = splitter.Test_index
         
-        # Load needed files
-        Input_path       = data_set.Input_path.iloc[Index]
-        Output_path      = data_set.Output_path.iloc[Index]
-        Output_A         = data_set.Output_A.iloc[Index]
-        Output_T_E       = data_set.Output_T_E[Index]
-        Domain           = data_set.Domain.iloc[Index]
-        
-        return [data_set, data_param, splitter, 
-                Input_path, Output_path, 
-                Output_A, Output_T_E, Domain]
+        return [data_set, data_param, splitter, Index]
     
     
-    def _get_model_selection(self, data_set):
+    def _get_model_selection(self, data_set, splitter):
         if self.num_models > 1:
             print('------------------------------------------------------------------', flush = True)
             sample_string = 'In the current experiment, the following models are available:'
@@ -1578,13 +1584,9 @@ class Experiment():
             model_dict = self.Models[i_d]
         else:
             model_dict = self.Models[0]
-            
-        return model_dict
         
-    
-    
-    def _get_data_pred(self, data_set, splitter, model_dict):
-        # get model subjects
+
+        # get the model
         model_name   = model_dict['model']
         model_kwargs = model_dict['kwargs']
         
@@ -1594,39 +1596,37 @@ class Experiment():
         # Load specific model
         model = model_class(model_kwargs, data_set, splitter, self.evaluate_on_train_set)
         model.train()
-        output = model.predict()
+
+        return model
         
-        output_trans_path = data_set.transform_outputs(output, model.get_output_type(), 
-                                                       'path_all_wi_pov', model.pred_file)
-        
-        # Get predictions        
-        Output_path_pred = output_trans_path[1]
-        Pred_index = output_trans_path[0]
-        
-        # Transform index
-        if self.plot_train:
-            Index = splitter.Train_index
-        else:
-            Index = splitter.Test_index
-            
-        TP_index = Index[:,np.newaxis] == Pred_index[np.newaxis]
-        assert (TP_index.sum(1) == 1).all()
-        TP_index = TP_index.argmax(1)
-        
-        # Load needed files
-        Output_path_pred = Output_path_pred.iloc[TP_index]
-        
-        return model, Output_path_pred
     
-    def _get_data_sample(self, sample_ind, data_set, 
-                         Input_path, Output_path, 
-                         Output_A, Output_T_E, Domain):
+    def _get_data_sample(self, sample_ind, data_set, model, Output_A, Domain):
         
-        input_path       = Input_path.iloc[sample_ind]
-        output_path      = Output_path.iloc[sample_ind]
-        output_A         = Output_A.iloc[sample_ind]
-        output_T_E       = Output_T_E[sample_ind]
-        domain           = Domain.iloc[sample_ind]
+        domain           = Domain.loc[sample_ind]
+        output_A         = Output_A.loc[sample_ind]
+
+
+        # get empty inputs
+        input_path  = pd.DataFrame(np.empty((len(sample_ind), len(data_set.Agents)), dtype = object), columns = data_set.Agents, index = sample_ind)
+        output_path = pd.DataFrame(np.empty((len(sample_ind), len(data_set.Agents)), dtype = object), columns = data_set.Agents, index = sample_ind)
+        output_T_E  = np.empty(len(sample_ind), dtype = object)
+
+        # Go through needed data
+        file_indices = domain.file_index
+        for file_index in np.unique(file_indices):
+            use_index = file_indices == file_index
+
+            # Load raw darta
+            file = data_set.Files[file_index] + '_data.npy'
+            [_, Input_path, _, Output_path, _, _, _, Output_T_E, _] = np.load(file, allow_pickle = True)
+
+            ind = domain[use_index].Index_saved
+
+            ind_sample = np.where(use_index)[0]
+            ind_agent  = data_set.get_indices_1D(np.array(Input_path.columns), np.array(data_set.Agents))
+            input_path.iloc[ind_sample, ind_agent]  = Input_path.iloc[ind]
+            output_path.iloc[ind_sample, ind_agent] = Output_path.iloc[ind]
+            output_T_E[use_index]  = Output_T_E[ind]
         
         # Load raw darta
         ind_p = np.array([name for name in input_path.columns 
@@ -1642,18 +1642,33 @@ class Experiment():
         else:
             img = None
 
+        if data_set.includes_sceneGraphs():
+            if hasattr(model, 'sceneGraph_radius'):
+                radius = model.sceneGraph_radius
+            else:
+                radius = None
+            graph = data_set.return_batch_sceneGraphs(domain.iloc[[0]], ip[np.newaxis, :, -1], radius) 
+            graph = graph[0]
+        else:
+            graph = None
+
         # Ensure that op is not longer than 3000 samples
         if len(op) > 3000:
             np.random.seed(0)
             np.random.shuffle(op)
             op = op[:3000]
             
-        return [op, ip, ind_p, output_A, output_T_E, img, domain]
+        return [op, ip, ind_p, output_A, output_T_E, img, graph, domain]
     
     
-    def _get_data_sample_pred(self, sample_ind, ip, ind_p, Output_path_pred):
-        output_path_pred = Output_path_pred.iloc[sample_ind]
+    def _get_data_sample_pred(self, model, Index, ip, ind_p):
+
         
+        output = model.predict_actual(Index)
+        
+        output_pred = model.transform_output(output, Index, model.get_output_type(), 'path_all_wi_pov')
+        output_path_pred = output_pred[1]
+        output_path_pred_probs = output_pred[2]
         
         ind_pp = np.array([name for name in output_path_pred.columns 
                            if isinstance(output_path_pred.iloc[0][name], np.ndarray)])
@@ -1661,15 +1676,22 @@ class Experiment():
         use_input = np.in1d(ind_p, ind_pp)
         
         opp = np.stack(output_path_pred[ind_pp].to_numpy().tolist(), 0) # n_samples x n_a x n_p x n_O x 2
+        opp_probs = np.stack(output_path_pred_probs[ind_pp].to_numpy().tolist(), 0).astype(float) # n_samples x n_a x (n_p + 1)
+        if len(opp_probs.shape) == 2:
+            assert opp_probs.shape[:2] == opp.shape[:2]
+            opp_probs = opp_probs[...,np.newaxis].repeat(opp.shape[2] + 1, axis = -1)
+        # Remove ground truth predictions
+        opp_probs = opp_probs[:, :, :-1]
 
         # Combine identical samples and number path predicted into one dimension
         opp = opp.transpose(0,2,1,3,4).reshape(opp.shape[0] * opp.shape[2], opp.shape[1], opp.shape[3], opp.shape[4])
+        opp_probs = opp_probs.transpose(0,2,1).reshape(opp.shape[0], opp.shape[1])
 
-        max_v = np.nanmax(np.stack([np.max(opp, axis = (0,1,2)),
-                                    np.max(ip[use_input], axis = (0,1))], axis = 0), axis = 0)
+        max_v = np.nanmax(np.stack([np.nanmax(opp, axis = (0,1,2)),
+                                    np.max(ip[use_input,...,:2], axis = (0,1))], axis = 0), axis = 0)
         
-        min_v = np.nanmin(np.stack([np.min(opp, axis = (0,1,2)),
-                                    np.min(ip[use_input], axis = (0,1))], axis = 0), axis = 0)
+        min_v = np.nanmin(np.stack([np.nanmin(opp, axis = (0,1,2)),
+                                    np.min(ip[use_input,...,:2], axis = (0,1))], axis = 0), axis = 0)
 
         max_v = np.ceil(max_v)
         min_v = np.floor(min_v)
@@ -1677,12 +1699,15 @@ class Experiment():
         # Ensure that opp is not longer than 3000 samples
         if len(opp) > 3000:
             np.random.seed(0)
-            np.random.shuffle(opp)
-            opp = opp[:3000]
-        return [opp, ind_pp, min_v, max_v]
+            used = np.arange(len(opp))
+            np.random.shuffle(used)
+            used = used[:3000]
+            opp = opp[used]
+            opp_probs = opp_probs[used]
+        return [opp, opp_probs, ind_pp, min_v, max_v]
             
     
-    def _draw_background(self, ax, data_set, img, domain):
+    def _draw_background(self, ax, data_set, img, graph, domain):
         # Load line segments of data_set 
         map_lines_solid, map_lines_dashed = data_set.provide_map_drawing(domain = domain.iloc[0])
         
@@ -1707,61 +1732,65 @@ class Experiment():
         if data_set.includes_images():
             height, width, _ = list(np.array(img.shape) * data_set.get_Target_MeterPerPx(domain.iloc[0]))
             ax.imshow(img, extent=[-width/2, width/2, -height/2, height/2], interpolation='nearest')
+
+        if data_set.includes_sceneGraphs():
+            # Draw only centerlines 
+            centerlines = graph.centerlines
+
+            for centerline in centerlines:
+                ax.plot(centerline[:,0], centerline[:,1], 'k', linewidth = 2)
         
         # Draw boundaries
         ax.add_collection(map_solid)
         ax.add_collection(map_dashed)
     
-    def _select_testing_samples(self, data_set, splitter, load_all, Output_A, plot_similar_futures):
+    def _select_testing_samples(self, data_set, load_all, Output_A, plot_similar_futures, Index):
         print('------------------------------------------------------------------', flush = True)
-        if (not load_all) and (len(Output_A.columns) > 1) and (not plot_similar_futures):
-            sample_string = 'In this case '
-            for n_beh, beh in enumerate(Output_A.columns):
-                if beh != Output_A.columns[-1]:
-                    sample_string += '{} '.format(Output_A[beh].to_numpy().sum()) + beh + ' ({})'.format(n_beh + 1)
-                    if len(Output_A.columns) > 2:
-                        sample_string += ', '
-                    else:
-                        sample_string += ' '
-                else:                            
-                    sample_string += 'and {} '.format(Output_A[beh].to_numpy().sum()) + beh + ' ({})'.format(n_beh + 1)       
-            sample_string += ' samples are available.'
-            print(sample_string, flush = True)  
-            print('Select behavior, by typing a number between 1 and {} for the specific behavior): '.format(len(Output_A.columns)), flush = True)
-            print('', flush = True)
-            try:
-                n_beh = int(input('Enter a number: ')) - 1
-            except:
-                n_beh = -1
-            while n_beh not in range(len(Output_A.columns)):
-                print('This answer was not accepted. Please repeat: ', flush = True)
-                print('', flush = True)
-                try:
-                    n_beh = int(input('Enter a number: ')) - 1
-                except:
-                    n_beh = -1 
-            
-            Chosen_index = np.where(Output_A.iloc[:, n_beh].to_numpy())[0]
-        else:
-            Chosen_index = np.arange(len(Output_A))
-        
         # For plot similar futures, transform Chosen_index into list of arrays
         if plot_similar_futures:
             # Get subgroups
             data_set._group_indentical_inputs()
-            if self.plot_train:
-                Index = splitter.Train_index
-            else:
-                Index = splitter.Test_index
             
             subgroup = data_set.Subgroups[Index]
 
             # Assemble sets of similar futures
             Chosen_sets = []
             for s in np.unique(subgroup):
-                Chosen_sets.append(np.where(subgroup == s)[0])
+                Chosen_sets.append(Index[subgroup == s])
         else:
-            Chosen_sets = list(Chosen_index[:,np.newaxis])
+            if (not load_all) and (len(Output_A.columns) > 1) and (not plot_similar_futures):
+                sample_string = 'In this case '
+                for n_beh, beh in enumerate(Output_A.columns):
+                    if beh != Output_A.columns[-1]:
+                        sample_string += '{} '.format(Output_A[beh].to_numpy().sum()) + beh + ' ({})'.format(n_beh + 1)
+                        if len(Output_A.columns) > 2:
+                            sample_string += ', '
+                        else:
+                            sample_string += ' '
+                    else:                            
+                        sample_string += 'and {} '.format(Output_A[beh].to_numpy().sum()) + beh + ' ({})'.format(n_beh + 1)       
+                sample_string += ' samples are available.'
+                print(sample_string, flush = True)  
+                print('Select behavior, by typing a number between 1 and {} for the specific behavior): '.format(len(Output_A.columns)), flush = True)
+                print('', flush = True)
+                try:
+                    n_beh = int(input('Enter a number: ')) - 1
+                except:
+                    n_beh = -1
+                while n_beh not in range(len(Output_A.columns)):
+                    print('This answer was not accepted. Please repeat: ', flush = True)
+                    print('', flush = True)
+                    try:
+                        n_beh = int(input('Enter a number: ')) - 1
+                    except:
+                        n_beh = -1 
+                
+                Chosen_sets = Index[np.where(Output_A.iloc[:, n_beh].to_numpy())[0]]
+            else:
+                Chosen_sets = Index[np.arange(len(Output_A))]
+            
+            
+            Chosen_sets = list(Chosen_sets[:,np.newaxis])
 
 
         if not load_all:
@@ -1811,22 +1840,18 @@ class Experiment():
         return sample_inds
     
         
-    def _get_path_likelihoods(self, data_set, splitter, model, sample_ind, plot_train, opp, ind_pp):
-        # Manually overwrite saved test_index
-        if self.plot_train:
-            model.Index_test = splitter.Train_index[sample_ind[[0]]]
-        else:
-            model.Index_test = splitter.Test_index[sample_ind[[0]]]
+    def _get_path_likelihoods(self, data_set, model, sample_ind, opp, ind_pp, joint = False):
+        # presafe model parameters
+        save_prediction = bool(int(model.data_set.save_predictions)) # Be sure to make copy
+        num_samples_path_pred = int(float(model.num_samples_path_pred))
 
-        
+        # Set save predictions to false to not touch saved data
+        model.data_set.save_predictions = False
+
         # Overwrite number of predictions
         model.num_samples_path_pred = max(1, 3000 - len(opp))
-
-        if hasattr(model, 'Ind_pred'):
-            del model.Ind_pred
-
         # Run the actual prediction
-        Pred_index, Output_path_pred = model.predict_actual()
+        Pred_index, Output_path_pred, _ = model.predict_actual(sample_ind[[0]])
 
         # Concatenate old predictions with new ones
         for i, agent in enumerate(ind_pp):
@@ -1838,16 +1863,22 @@ class Experiment():
         model.num_samples_path_pred = 3000
 
         # Get indpendent likelihoods
-        # Remove previous results
-        if hasattr(model, 'Path_pred'):
-            del model.Path_pred, model.Path_true, model.Pred_step
-            
-        if hasattr (model, 'Log_prob_indep_pred'):
-            del model.Log_prob_indep_pred
-        model._get_indep_KDE_pred_probabilities(Pred_index, Output_path_pred)
+        # Prevent damage to save files
+        data_set.save_predictions  = False
+        model.prediction_overwrite = True
 
-        # Only consider the likelihoods of trajectories in opp
-        Lp = model.Log_prob_indep_pred[0, :opp.shape[0], :opp.shape[1]]
+        if joint:
+            model._get_joint_KDE_pred_probabilities(Pred_index, Output_path_pred, get_for_pred_agents = True)
+            Lp = model.Log_prob_joint_pred[0, :opp.shape[0], np.newaxis] # num_preds x 1
+            Lp = np.repeat(Lp, opp.shape[1], axis = 1) # num_preds x num_agents
+        else:
+            model._get_indep_KDE_pred_probabilities(Pred_index, Output_path_pred, get_for_pred_agents = True)
+            # Only consider the likelihoods of trajectories in opp
+            Lp = model.Log_prob_indep_pred[0, :opp.shape[0], :opp.shape[1]] # num_preds x num_agents
+
+        # Reset model parameters
+        model.data_set.save_predictions = save_prediction
+        model.num_samples_path_pred     = num_samples_path_pred
 
         return Lp
 
@@ -1857,6 +1888,7 @@ class Experiment():
                    plot_train = False,
                    only_show_pred_agents = False,
                    likelihood_visualization = False,
+                   joint_likelihoods = False,
                    plot_only_lines = False):
         assert self.provided_modules, "No modules have been provided. Run self.set_modules() first."
         assert self.provided_setting, "No parameters have been provided. Run self.set_parameters() first."
@@ -1868,26 +1900,38 @@ class Experiment():
         plt.close('all')
         time.sleep(0.05)
         
-        [data_set, data_param, splitter, 
-         Input_path, Output_path, 
-         Output_A, Output_T_E, Domain] = self._get_data()
-        
-        model_dict = self._get_model_selection(data_set)
-        
+        # Get dataset and splitter
+        [data_set, data_param, splitter, Index] = self._get_data()
+
         # Get model
-        model, Output_path_pred = self._get_data_pred(data_set, splitter, model_dict)
-        
-        sample_inds = self._select_testing_samples(data_set, splitter, load_all, Output_A, plot_similar_futures)
+        model = self._get_model_selection(data_set, splitter)
+
+        # Get possible domains
+        Domain = data_set.Domain.loc[Index]
+
+        # Get Output_A
+        file_indices = np.unique(Domain.file_index)
+        Output_A = pd.DataFrame(np.zeros((len(Index), len(data_set.Behaviors)), int), columns = data_set.Behaviors, index = Index)
+
+        for file_index in file_indices:
+            Index_file = np.where(Domain.file_index == file_index)[0]
+            file = data_set.Files[file_index] + '_data.npy'
+            Output_A_file = np.load(file, allow_pickle = True)[6]
+            ind = Domain.Index_saved.iloc[Index_file]
+
+            Output_A.iloc[Index_file] = Output_A_file.reindex(columns = data_set.Behaviors).iloc[ind].to_numpy()
+
+        sample_inds = self._select_testing_samples(data_set, load_all, Output_A, plot_similar_futures, Index)
+
         
         ## Get specific case
-        for sample_name, sample_ind in sample_inds:   
+        for sample_name, sample_ind in sample_inds: 
+
             [op, ip, ind_p,  
-             output_A, output_T_E, img, domain] = self._get_data_sample(sample_ind, data_set,
-                                                                        Input_path, Output_path, 
-                                                                        Output_A, Output_T_E, Domain)
+             output_A, output_T_E, img, graph, domain] = self._get_data_sample(sample_ind, data_set, model, Output_A, Domain)
             
                                                                         
-            [opp, ind_pp, min_v, max_v] = self._get_data_sample_pred(sample_ind, ip, ind_p, Output_path_pred)
+            [opp, Lp, ind_pp, min_v, max_v] = self._get_data_sample_pred(model, sample_ind, ip, ind_p)
             
 
 
@@ -1903,8 +1947,9 @@ class Experiment():
             # Get likelihoods of the given samples, based on 3000 predictions
             if likelihood_visualization:
                 # Only available for path prediction models
-                if model.get_output_type() == 'path_all_wi_pov':
-                    Lp = self._get_path_likelihoods(data_set, splitter, model, sample_ind, plot_train, opp, ind_pp)
+                if not np.isfinite(Lp).all():
+                    if model.get_output_type() == 'path_all_wi_pov':
+                        Lp = self._get_path_likelihoods(data_set, model, sample_ind, opp, ind_pp, joint = joint_likelihoods)
             
 
 
@@ -1912,7 +1957,7 @@ class Experiment():
             fig, ax = plt.subplots(figsize = (10,8))            
             
             # plot map
-            self._draw_background(ax, data_set, img, domain)
+            self._draw_background(ax, data_set, img, graph, domain)
             
             # plot inputs
             colors = sns.color_palette("bright", len(ind_p))
@@ -2004,7 +2049,7 @@ class Experiment():
                      r'$, Model: ' + model.get_name()['print'])
             behs = np.array(output_A.columns)
             if len(behs) > 1 and not plot_similar_futures:
-                title += r': \\True behavior: ' + behs[output_A.iloc[0]][0] + r' at $t = ' + str(output_T_E[0])[:5] + '$' 
+                title += r': \nTrue behavior: ' + behs[output_A.iloc[0].to_numpy().astype(bool)][0] + r' at $t = ' + str(output_T_E[0])[:5] + '$' 
 
             ax.set_title(title)
             plt.axis('off')

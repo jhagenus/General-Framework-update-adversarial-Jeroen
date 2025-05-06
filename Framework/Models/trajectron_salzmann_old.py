@@ -8,10 +8,7 @@ from Trajectron_old.trajec_model.trajectron import Trajectron
 from Trajectron_old.trajec_model.model_registrar import ModelRegistrar
 from Trajectron_old.environment.environment import Environment
 from attrdict import AttrDict
-
-import matplotlib.pyplot as plt
-
-
+import warnings
 
 class trajectron_salzmann_old(model_template):
     '''
@@ -29,6 +26,9 @@ class trajectron_salzmann_old(model_template):
     def define_default_kwargs(self):
         if not('seed' in self.model_kwargs.keys()):
             self.model_kwargs['seed'] = 0
+
+        if not('predict_ego' in self.model_kwargs.keys()):
+            self.model_kwargs['predict_ego'] = True
     
     def setup_method(self):
         self.define_default_kwargs()
@@ -45,7 +45,8 @@ class trajectron_salzmann_old(model_template):
         self.min_t_O_train = 3
         self.max_t_O_train = 100
         self.predict_single_agent = True
-        self.can_use_map = False
+        self.can_use_map = True
+        self.can_use_graph = False
         # If self.can_use_map = True, the following is also required
         self.target_width = 175
         self.target_height = 100
@@ -244,6 +245,8 @@ class trajectron_salzmann_old(model_template):
         self.trajectron.set_annealing_params()
     
     
+
+    # Data extraction in numpy
     def rotate_pos_matrix(self, M, rot_angle):
         assert M.shape[-1] == 2
         assert M.shape[0] == len(rot_angle)
@@ -256,7 +259,7 @@ class trajectron_salzmann_old(model_template):
         return M_r
     
     
-    def extract_data_batch(self, X, T, Y = None, img = None, num_steps = 10):
+    def extract_data_batch(self, data, T, Y = None, img = None, num_steps = 10):
         attention_radius = dict()
         DIM = {'VEHICLE': 8, 'PEDESTRIAN': 6}
         
@@ -275,6 +278,8 @@ class trajectron_salzmann_old(model_template):
         Types[T == 'M'] = 'VEHICLE'
         Types = Types.astype(str)
         
+        # Get postions
+        X = data[...,:2]
         center_pos = X[:,0,-1]
         delta_x = center_pos - X[:,0,-2]
         rot_angle = np.angle(delta_x[:,0] + 1j * delta_x[:,1])
@@ -282,19 +287,71 @@ class trajectron_salzmann_old(model_template):
         center_pos = center_pos[:,np.newaxis,np.newaxis]        
         X_r = self.rotate_pos_matrix(X - center_pos, rot_angle)
         
-        
-        V = (X_r[...,1:,:] - X_r[...,:-1,:]) / self.dt
-        V = np.concatenate((V[...,[0],:], V), axis = -2)
+        # Get given information
+        if hasattr(self, 'input_data_type'):
+            given_data = np.array(self.input_data_type)
+        else:
+            given_data = np.array(['x', 'y'])
+
+        # get velocity
+        req_vel = np.array(['v_x', 'v_y'])
+        if np.in1d(req_vel, given_data).all():
+            v_ind = self.data_set.get_indices_1D(np.array(req_vel), given_data)
+            V = self.rotate_pos_matrix(data[...,v_ind], rot_angle)
+        else: 
+            V = (X_r[...,1:,:] - X_r[...,:-1,:]) / self.dt
+            V = np.concatenate((V[...,[0],:], V), axis = -2)
+
+        overwrite_V = np.isnan(V).all(-1) & (~np.isnan(X_r).all(-1))
+        assert overwrite_V.sum(-1).max() <= 1, "Velocity interpolation failed."
+
+        if overwrite_V.any():
+            OV_s, OV_a, OV_t = np.where(overwrite_V)
+            OV_use = OV_t < V.shape[2] - 1
+            V[OV_s[OV_use], OV_a[OV_use], OV_t[OV_use]] = V[OV_s[OV_use], OV_a[OV_use], OV_t[OV_use] + 1]
+            V[OV_s[~OV_use], OV_a[~OV_use], OV_t[~OV_use]] = 0.0
        
         # get accelaration
-        A = (V[...,1:,:] - V[...,:-1,:]) / self.dt
-        A = np.concatenate((A[...,[0],:], A), axis = -2)
-       
-        H = np.arctan2(V[:,:,:,1], V[:,:,:,0])
+        req_acc = np.array(['a_x', 'a_y'])
+        if np.in1d(req_acc, given_data).all():
+            a_ind = self.data_set.get_indices_1D(np.array(req_acc), given_data)
+            A = self.rotate_pos_matrix(data[...,a_ind], rot_angle)
+        else:
+            A = (V[...,1:,:] - V[...,:-1,:]) / self.dt
+            A = np.concatenate((A[...,[0],:], A), axis = -2)
+
+        overwrite_A = np.isnan(A).all(-1) & (~np.isnan(V).all(-1))
+        assert overwrite_A.sum(-1).max() <= 1, "Acceleration interpolation failed."
+
+        if overwrite_A.any():
+            OA_s, OA_a, OA_t = np.where(overwrite_A)
+            OA_use = OA_t < A.shape[2] - 1
+            A[OA_s[OA_use], OA_a[OA_use], OA_t[OA_use]] = A[OA_s[OA_use], OA_a[OA_use], OA_t[OA_use] + 1]
+            A[OA_s[~OA_use], OA_a[~OA_use], OA_t[~OA_use]] = 0.0
+
+        if 'theta' in given_data:
+            theta_ind = np.where(given_data == 'theta')[0][0]
+            H = data[...,theta_ind] - rot_angle[:,np.newaxis, np.newaxis]
+        else:
+            H = np.arctan2(V[:,:,:,1], V[:,:,:,0])
         
-        DH = np.unwrap(H, axis = -1) 
-        DH = (DH[:,:,1:] - DH[:,:,:-1]) / self.dt
-        DH = np.concatenate((DH[...,[0]], DH), axis = -1)
+        if 'd_theta' in given_data:
+            d_theta_ind = np.where(given_data == 'd_theta')[0][0]
+            DH = data[...,d_theta_ind]
+        else:
+            DH = H.copy()
+            DH[np.isfinite(H)] = np.unwrap(H[np.isfinite(H)], axis = -1) 
+            DH = (DH[:,:,1:] - DH[:,:,:-1]) / self.dt
+            DH = np.concatenate((DH[...,[0]], DH), axis = -1)
+
+        overwrite_DH = np.isnan(DH) & (~np.isnan(H))
+        assert overwrite_DH.sum(-1).max() <= 1, "Heading change interpolation failed."
+
+        if overwrite_DH.any():
+            ODH_s, ODH_a, ODH_t = np.where(overwrite_DH)
+            ODH_use = ODH_t < DH.shape[2] - 1
+            DH[ODH_s[ODH_use], ODH_a[ODH_use], ODH_t[ODH_use]] = DH[ODH_s[ODH_use], ODH_a[ODH_use], ODH_t[ODH_use] + 1]
+            DH[ODH_s[~ODH_use], ODH_a[~ODH_use], ODH_t[~ODH_use]] = 0.0
        
         # final state S
         S = np.concatenate((X_r, V, A, H[...,np.newaxis], DH[...,np.newaxis]), axis = -1).astype(np.float32)
@@ -311,7 +368,10 @@ class trajectron_salzmann_old(model_template):
         S_st[~Ped_agents,:,6] /= self.std_hea_veh
         S_st[~Ped_agents,:,7] /= self.std_d_h_veh
         
-        D = np.min(np.sqrt(np.sum((X[:,[0]] - X) ** 2, axis = -1)), axis = - 1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category = RuntimeWarning)
+            D = np.nanmin(np.sqrt(np.sum((X[:,[0]] - X) ** 2, axis = -1)), axis = - 1)
+
         D_max = np.zeros_like(D)
         for i_sample in range(len(D)):
             for i_v in range(X.shape[1]):
@@ -351,8 +411,11 @@ class trajectron_salzmann_old(model_template):
             img_batch = torch.from_numpy(img_batch).to(dtype = torch.float32)
         else:
             img_batch = None
-            
-        first_h = torch.from_numpy(np.zeros(len(X), np.int32))
+        
+        # Get the first non nan_indices
+        exists = np.isfinite(X[:,0]).all(-1)
+        first_h = np.argmax(exists, axis = -1)
+        first_h = torch.from_numpy(first_h.astype(np.int32))
         
         dim = DIM[node_type]
         S = torch.from_numpy(S[...,:dim]).to(dtype = torch.float32)
@@ -361,7 +424,8 @@ class trajectron_salzmann_old(model_template):
         if Y is None:
             return S, S_st, first_h, Neighbor, Neighbor_edge, img_batch, node_type, center_pos, rot_angle
         else:
-            Y = self.rotate_pos_matrix(Y - center_pos, rot_angle).copy()
+            # Only use positions for future data
+            Y = self.rotate_pos_matrix(Y[...,:2] - center_pos, rot_angle).copy()
             
             Y_st = Y.copy()
             Y_st[Ped_agents]  /= self.std_pos_ped
@@ -370,12 +434,16 @@ class trajectron_salzmann_old(model_template):
             Y = torch.from_numpy(Y).to(dtype = torch.float32)
             Y_st = torch.from_numpy(Y_st).to(dtype = torch.float32)
             return S, S_st, first_h, Y, Y_st, Neighbor, Neighbor_edge, img_batch, node_type
-        
+    
+
+    # Data extraction in torch
     def rotate_pos_matrix_tensor(self, M, rot_angle):
         assert M.shape[-1] == 2
         assert M.shape[0] == len(rot_angle)
-        
-        rot_angle_tensor = torch.tensor(rot_angle, dtype=torch.float32)
+
+
+        rot_angle_tensor = rot_angle.to(dtype=torch.float32)
+        # rot_angle_tensor = torch.tensor(rot_angle, dtype=torch.float32)
         cos_rot = torch.cos(rot_angle_tensor)
         sin_rot = torch.sin(rot_angle_tensor)
         
@@ -521,7 +589,17 @@ class trajectron_salzmann_old(model_template):
         
             Y_st = Y_st.to(dtype = torch.float32)
             return S, S_st, first_h, Y, Y_st, Neighbor, Neighbor_edge, img_batch, node_type
-    
+
+
+
+
+
+
+
+
+
+
+
     def prepare_model_training(self, Pred_types):
         optimizer = dict()
         lr_scheduler = dict()
@@ -582,8 +660,8 @@ class trajectron_salzmann_old(model_template):
             batch_number = 0
             while not epoch_done:
                 batch_number += 1
-                print('Train trajectron: Epoch ' + rjust_epoch + '/{} - Batch {}'.format(epochs, batch_number))
-                X, Y, T, img, img_m_per_px, _, num_steps, epoch_done = self.provide_batch_data('train', batch_size)
+                # print('Train trajectron: Epoch ' + rjust_epoch + '/{} - Batch {}'.format(epochs, batch_number))
+                X, Y, T, _, img, img_m_per_px, _, _, num_steps, _, _, epoch_done = self.provide_batch_data('train', batch_size)
                 
                 S, S_St, first_h, Y, Y_st, Neighbor, Neighbor_edge, img, node_type = self.extract_data_batch(X, T, Y, img, num_steps)
                 
@@ -629,13 +707,17 @@ class trajectron_salzmann_old(model_template):
         self.weights_saved = []
         for weigths in Weights:
             self.weights_saved.append(weigths.detach().cpu().numpy())
-        
-        
+
+
     def load_method(self, l2_regulization = 0):
         Weights = list(self.trajectron.model_registrar.parameters())
         with torch.no_grad():
+            ii = 0
             for i, weights in enumerate(self.weights_saved):
-                Weights[i][:] = torch.from_numpy(weights)[:]
+                weights_torch = torch.from_numpy(weights)
+                if Weights[ii].shape == weights_torch.shape:
+                    Weights[ii][:] = weights_torch[:]
+                    ii += 1
         
     def predict_method(self):
         batch_size = max(1, int(self.trajectron.hyperparams['batch_size'] / 10))
@@ -646,7 +728,7 @@ class trajectron_salzmann_old(model_template):
         while not prediction_done:
             batch_number += 1
             print('Predict trajectron: Batch {}'.format(batch_number))
-            X, T, img, img_m_per_px, _, num_steps, Sample_id, Agent_id, prediction_done = self.provide_batch_data('pred', batch_size)
+            X, T, _, img, img_m_per_px, _, _, num_steps, Sample_id, Agent_id, prediction_done = self.provide_batch_data('pred', batch_size)
             S, S_St, first_h, Neighbor, Neighbor_edge, img, node_type, center_pos, rot_angle = self.extract_data_batch(X, T, None, img, num_steps)
             
             # Move img to device
@@ -681,11 +763,14 @@ class trajectron_salzmann_old(model_template):
             Pred_t = Pred_r + center_pos
             
             self.save_predicted_batch_data(Pred_t, Sample_id, Agent_id)
+    
 
-    def predict_batch_tensor(self,X,T,Domain,num_steps):
+    def predict_batch_tensor(self, X, T, S, C, img, img_m_per_px, graph, Pred_agents, num_steps):
+
+        assert Pred_agents[:,0].all() # only first agent is pred agent
+        assert not Pred_agents[:,1:].any() # Only first agent is pred agent
 
         X = X.to(self.trajectron.device)
-        img = None
         self.trajectron.model_registrar.to(self.trajectron.device)
     
         S, S_St, first_h, Neighbor, Neighbor_edge, img, node_type, center_pos, rot_angle = self.extract_data_batch_tensor(X, T, None, img, num_steps)
@@ -717,20 +802,28 @@ class trajectron_salzmann_old(model_template):
         # reverse translation
         Pred_t = Pred_r + center_pos
 
-        return Pred_t
+        return Pred_t.unsqueeze(1).repeat_interleave(X.shape[1], dim = 1)
 
-
+    
     def check_trainability_method(self):
         return None
     
     def get_output_type(self = None):
-        return 'path_all_wi_pov'
+        # get default kwargs
+        if hasattr(self, 'model_kwargs'):
+            self.define_default_kwargs()
+            if self.model_kwargs['predict_ego']:
+                return 'path_all_wi_pov'
+            else:
+                return 'path_all_wo_pov'
+        else:
+            return 'path_all_wi_pov'
     
     def get_name(self = None):
         self.define_default_kwargs()
 
         names = {'print': 'Trajectron ++ (Old_version)',
-                 'file': 't_pp_old_' + str(self.model_kwargs['seed']),
+                 'file': 't_pp_old_' + str(self.model_kwargs['seed']) + '_' + str(int(self.model_kwargs['predict_ego'])),
                  'latex': r'\emph{T++}'}
         return names
         

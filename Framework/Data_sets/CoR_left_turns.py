@@ -26,7 +26,7 @@ class CoR_left_turns(data_set_template):
         self.scenario = scenario_gap_acceptance()
     
     def path_data_info(self = None):
-        return ['x', 'y', 'v_x', 'v_y', 'theta']
+        return ['x', 'y']
     
     def get_image(self):
         # analize raw dara 
@@ -247,13 +247,13 @@ class CoR_left_turns(data_set_template):
         agents = ['ego', 'tar']
 
         # Get images
-        x_center, y_center, rot_angle = self.get_image()
+        # x_center, y_center, rot_angle = self.get_image()
 
         # Get scenegraphs
         self.get_sceneGraph()
 
         # extract raw samples
-        for i in range(self.num_samples):
+        for i in range(len(self.Data)):
             path = pd.Series(np.empty(len(agents), np.ndarray), index = agents)
             agent_type = pd.Series(np.full(len(agents), 'V', dtype = str), index = agents)
             
@@ -300,12 +300,9 @@ class CoR_left_turns(data_set_template):
             path.tar = tar
             
             domain = pd.Series([int(self.Data.subj_id.iloc[i]),
-                                x_center,
-                                y_center,
-                                rot_angle,
                                 self.Images.index[0],
                                 self.SceneGraphs.index[0]
-                                ], index = ['Subj_ID','x_center','y_center','rot_angle', 'image_id', 'graph_id'])
+                                ], index = ['Subj_ID','image_id', 'graph_id'])
             
             # domain = pd.Series(np.ones(1, int) * self.Data.subj_id.iloc[i], index = ['Subj_ID'])
             
@@ -483,8 +480,8 @@ class CoR_left_turns(data_set_template):
             return True
     
     def includes_images(self = None):
-        return True
+        return False
     
     def includes_sceneGraphs(self = None):
-        return True
+        return False
 
