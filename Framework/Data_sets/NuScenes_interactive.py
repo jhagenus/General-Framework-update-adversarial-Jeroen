@@ -6,7 +6,6 @@ import os
 import json
 from scipy import interpolate as interp
 from pyquaternion import Quaternion
-from NuScenes.data.train_val_split import train, val
 
 
 
@@ -43,27 +42,41 @@ class NuScenes_interactive(data_set_template):
         return False
     
     def includes_images(self=None):
+        return True 
+    
+    def includes_sceneGraphs(self = None):
         return True
     
     def set_scenario(self):
         self.scenario = scenario_none()
+    
+    def path_data_info(self = None):
+        return ['x', 'y']
 
     def create_path_samples(self):
         # from nuscenes.map_expansion.map_api import NuScenesMap, locations
         from nuscenes.nuscenes import NuScenes
+        from NuScenes.data.train_val_split import train, val
         
         self.num_samples = 0 
         self.Path = []
         self.Type_old = []
+        self.Size_old = []
         self.T = []
         self.Domain_old = []
 
         # prepare file path
         file_path = self.path + os.sep + 'Data_sets' + os.sep + 'NuScenes' + os.sep + 'data'
 
+        # extract map data
         # Get images
         image_path_full = file_path + os.sep + 'maps' + os.sep + 'expansion' + os.sep 
         self.Images = pd.DataFrame(np.zeros((0, 2), object), columns = ['Image', 'Target_MeterPerPx'])
+
+        # Get scenegraphs
+        sceneGraph_columns = ['num_nodes', 'lane_idcs', 'pre_pairs', 'suc_pairs', 'left_pairs', 'right_pairs',
+                            'left_boundaries', 'right_boundaries', 'centerlines', 'lane_type', 'pre', 'suc', 'left', 'right']  
+        self.SceneGraphs = pd.DataFrame(np.zeros((0, len(sceneGraph_columns)), object), columns = sceneGraph_columns)
 
         map_files = os.listdir(image_path_full)
         map_files.reverse()
@@ -71,15 +84,25 @@ class NuScenes_interactive(data_set_template):
         
         for map_file in map_files:
             if map_file.endswith('.json'):
+                from nuscenes.map_expansion.map_api import NuScenesMap
+
                 map_name = map_file[:-5]
+
+                print(' Extracting map data for ' + map_name)
+
+                map_image = NuScenesMap(dataroot = file_path, map_name = map_name)
+
+                # Get the sceneGraph
+                graph = self.getSceneGraphNuScenes(map_image)
+                self.SceneGraphs.loc[map_name] = graph
+
+                # Get the bit map 
                 test_file = file_path + os.sep + 'Map_arrays' + os.sep + map_name + '.npy'
                 if os.path.isfile(test_file):
                     bit_map = np.load(test_file, allow_pickle = True)
                 else:
-                    from nuscenes.map_expansion.map_api import NuScenesMap
                     from NuScenes.vec_map import VectorMap
                     from NuScenes.nusc_utils import populate_vector_map
-                    map_image = NuScenesMap(dataroot = file_path, map_name = map_name)
                     vector_map = VectorMap('placeholder:' + map_name)
                     populate_vector_map(vector_map, map_image)
                     bit_map = vector_map.rasterize(resolution = px_per_meter)
@@ -93,6 +116,7 @@ class NuScenes_interactive(data_set_template):
                     np.save(test_file, bit_map)
                     
                 self.Images.loc[map_name] = [bit_map, 1 / px_per_meter]
+
 
         # Get trajectories
         data_obj = NuScenes(version = 'v1.0-trainval', dataroot = file_path, verbose = True)
@@ -133,6 +157,7 @@ class NuScenes_interactive(data_set_template):
 
             path = pd.Series(np.zeros(0, np.ndarray), index = [])
             agent_types = pd.Series(np.zeros(0, str), index = [])
+            agent_sizes = pd.Series(np.zeros(0, np.ndarray), index = [])
             pred_points = pd.Series(np.zeros(0, np.ndarray), index = [])
 
             t = np.arange(scene_length) * nuscenes_dt
@@ -207,6 +232,7 @@ class NuScenes_interactive(data_set_template):
                     elif agent_category.startswith('human'):    
                         agent_types[agent_name] = 'P'
 
+                    agent_sizes[agent_name] = np.array([agent_data['size'][1], agent_data['size'][0]]) # length, width
 
                     agent_traj = np.ones((scene_length, 2)) * np.nan
                     agent_traj[frame_idx:frame_idx + len(translations),:] = translations[:,:2]
@@ -223,12 +249,14 @@ class NuScenes_interactive(data_set_template):
             path['tar'] = ego_translations[:,:2] * np.array([[1, -1]]) # Align with Images
             pred_points['tar'] = ego_predictions
             agent_types['tar'] = 'V'
+            agent_sizes['tar'] = np.array([5.0, 2.0]) # length, width
 
-            domain = pd.Series(np.zeros(6, object), index = ['location', 'scene', 'image_id', 
+            domain = pd.Series(np.zeros(7, object), index = ['location', 'scene', 'image_id', 'graph_id',
                                                              'pred_agents', 'pred_timepoints', 'splitting'])
             domain.location = scene_location
             domain.scene = scene_name 
             domain.image_id = scene_location
+            domain.graph_id = scene_location
             domain.pred_agents = pred_points
             domain.pred_timepoints = t
             
@@ -246,6 +274,7 @@ class NuScenes_interactive(data_set_template):
             self.num_samples += 1
             self.Path.append(path)
             self.Type_old.append(agent_types)
+            self.Size_old.append(agent_sizes)
             self.T.append(t)
             self.Domain_old.append(domain)
         
@@ -253,6 +282,7 @@ class NuScenes_interactive(data_set_template):
         self.Type_old = pd.DataFrame(self.Type_old)
         self.T = np.array(self.T+[()], np.ndarray)[:-1]
         self.Domain_old = pd.DataFrame(self.Domain_old)
+        self.Size_old = pd.DataFrame(self.Size_old)
         
     
 
@@ -270,21 +300,10 @@ class NuScenes_interactive(data_set_template):
             if isinstance(path[agent], float):
                 assert str(path[agent]) == 'nan'
             else:
-                x = path[agent][:,0]
-                y = path[agent][:,1]
-                
-                rewrite = np.isnan(x)
-                if not rewrite.any():
-                    continue
-                useful = np.invert(rewrite)
                 if agent_types[agent] == 'P':
-                    x = np.interp(t,t[useful],x[useful])
-                    y = np.interp(t,t[useful],y[useful])
+                    path[agent] = self.extrapolate_path(path[agent], t, mode = 'pos')
                 else:
-                    x = interp.interp1d(t[useful], x[useful], fill_value = 'extrapolate', assume_sorted = True)(t)
-                    y = interp.interp1d(t[useful], y[useful], fill_value = 'extrapolate', assume_sorted = True)(t)
-            
-                path[agent] = np.stack([x, y], axis = -1)
+                    path[agent] = self.extrapolate_path(path[agent], t, mode = 'vel')
         
         return path, agent_types
     

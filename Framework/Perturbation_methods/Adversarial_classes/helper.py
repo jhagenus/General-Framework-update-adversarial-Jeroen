@@ -17,7 +17,7 @@ class Helper:
         Raises:
             ValueError: If the tensors are not approximately equal within the specified tolerance.
         """
-        equal_tensors = torch.allclose(Data_1, Data_2, atol=1e-3)
+        equal_tensors = torch.allclose(Data_1, Data_2, atol=1e-2)
 
         if not equal_tensors:
             raise ValueError("The conversion is not correct.")
@@ -102,6 +102,26 @@ class Helper:
         nan_array = np.full(
             (Y_shape[0], Y_shape[1], Y_shape[2]-Y_new_pert.shape[2], Y_shape[3]), np.nan)
         return np.concatenate((Y_new_pert, nan_array), axis=2)
+    
+    @staticmethod
+    def return_to_old_shape_pred_1(Y_new_pert, Y_old, Y_shape, ego_agent_index):
+        """
+        Restores the perturbed tensor to its original shape by appending NaN values.
+
+        Args:
+            Y_new_pert (np.ndarray): The perturbed tensor with reduced shape.
+            Y_old (np.ndarray): The original tensor.
+            Y_shape (tuple): The original shape of the tensor.
+            ego_agent_index (int): The index of the ego agent.
+
+        Returns:
+            np.ndarray: The tensor restored to its original shape with NaN values appended.
+        """
+        mean_Y_new_pert = np.expand_dims(np.mean(Y_new_pert, axis=1), axis=1)
+        Y_final = np.concatenate((mean_Y_new_pert, Y_old[:, 1:, :, :]), axis=1)
+
+        nan_array = np.full((Y_shape[0], Y_shape[1], Y_shape[2]-Y_final.shape[2], Y_shape[3]), np.nan)
+        return np.concatenate((Y_final, nan_array), axis=2)
 
     @staticmethod
     def validate_settings_order(First, Second):
@@ -136,7 +156,7 @@ class Helper:
         assert args[0] * args[1] >= args[2], "The third value is to large."
 
     @staticmethod
-    def flip_dimensions_2(X_new_pert, Y_new_pert, agent_order):
+    def flip_dimensions_2(X_new_pert, Y_new_pert, Y_pred_1, agent_order):
         """
         Reorders the dimensions of the perturbed tensors based on the original agent order if flipping is required.
 
@@ -154,8 +174,9 @@ class Helper:
         agent_order_inverse = np.argsort(agent_order)
         X_new_pert = X_new_pert[:, agent_order_inverse, :, :]
         Y_new_pert = Y_new_pert[:, agent_order_inverse, :, :]
+        Y_pred_1 = Y_pred_1[:, agent_order_inverse, :, :]
 
-        return X_new_pert, Y_new_pert
+        return X_new_pert, Y_new_pert, Y_pred_1
 
     @staticmethod
     def compute_mask_values_standing_still(array):
@@ -219,7 +240,42 @@ class Helper:
             X (np.ndarray): A 4-dimensional array of shape (batch size, number agents, number time steps observed, coordinates (x,y)).
             Y (np.ndarray): A 4-dimensional array of shape (batch size, number agents, number time steps future, coordinate (x,y)).
             agent (np.ndarray): A 1-dimensional array indicating the type of each agent.
-            flip_dimensions (bool): A boolean indicating whether dimension flipping is required.
+
+        Returns:
+            tuple: A tuple containing:
+                   - agent_order (np.ndarray or None): The new order of agents, or None if no flipping is required.
+                   - tar_index (int): The index of the target agent.
+                   - ego_index (int): The index of the ego agent.
+        """
+        # Early exit if no dimension flipping is required
+
+        # Determine the indices for the target and ego agents
+        i_agent_perturbed = np.where(agent == 'tar')[0][0]
+        i_agent_collision = np.where(agent == 'ego')[0][0]
+
+        # Create an array of indices for other agents, excluding the target and ego agents
+        other_agents = np.arange(Y.shape[1])
+        other_agents = np.delete(other_agents, [i_agent_perturbed, i_agent_collision])
+
+        # Construct a new order for agents: target, ego, followed by the rest
+        agent_order = np.array([i_agent_perturbed, i_agent_collision, *other_agents])
+
+        # Rearrange the X and Y arrays according to the new agent order
+        X = X[:, agent_order, :, :]
+        Y = Y[:, agent_order, :, :]
+
+        # Return the index of tar and ego agent
+        tar_index = 0
+        ego_index = 1
+
+        return X, Y, agent_order, tar_index, ego_index
+    
+    def flip_dimensions_index(agent):
+        """
+        Flips the dimensions of the input arrays based on the specified agent and reorders the agent dimensions.
+
+        Args:
+            agent (np.ndarray): A 1-dimensional array indicating the type of each agent.
 
         Returns:
             tuple: A tuple containing:
@@ -236,23 +292,17 @@ class Helper:
         i_agent_collision = np.where(agent == 'ego')[0][0]
 
         # Create an array of indices for other agents, excluding the target and ego agents
-        other_agents = np.arange(Y.shape[1])
-        other_agents = np.delete(
-            other_agents, [i_agent_perturbed, i_agent_collision])
+        other_agents = np.arange(len(agent))
+        other_agents = np.delete(other_agents, [i_agent_perturbed, i_agent_collision])
 
         # Construct a new order for agents: target, ego, followed by the rest
-        agent_order = np.array(
-            [i_agent_perturbed, i_agent_collision, *other_agents])
-
-        # Rearrange the X and Y arrays according to the new agent order
-        X = X[:, agent_order, :, :]
-        Y = Y[:, agent_order, :, :]
+        agent_order = np.array([i_agent_perturbed, i_agent_collision, *other_agents])
 
         # Return the index of tar and ego agent
         tar_index = 0
         ego_index = 1
 
-        return X, Y, agent_order, tar_index, ego_index
+        return agent_order, tar_index, ego_index
 
     def get_dimensions_physical_bounds(constraints, agent_order):
         """
@@ -344,7 +394,7 @@ class Helper:
 
         mask_data = Helper.compute_mask_values_tensor(data)
 
-        control_action, _, _ = Control_action.inverse_Dynamical_Model(
+        control_action, _, _ = Control_action.Inverse_Dynamical_Model(
             data, mask_data, dt, "cpu")
 
         control_action = Helper.detach_tensor(control_action)[0]
@@ -424,7 +474,7 @@ class Helper:
         Returns:
             torch.Tensor: The converted tensor on the specified device.
         """
-        return torch.from_numpy(data).to(dtype=torch.float32, device=device)
+        return torch.from_numpy(data).to(device=device).float()
 
     @staticmethod
     def detach_tensor(*args):

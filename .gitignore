@@ -13,7 +13,6 @@ HRI_presentation.py
 *.tsv
 !requirements.txt
 *.log
-*.npy
 *.dill
 *.feather
 *.zip
@@ -52,10 +51,8 @@ rndSeed*
 *.out
 rename_files.py
 remove_files.py
-Results/
 *.zarr/
 Data_sets/NuScenes/v1.0-mini/
-simulations*.py
 Framework/Data_sets/Waymo/data/*/uncomp*
 Framework/Data_sets/Lyft/data/.unified_data_cache/
 Framework/experiments

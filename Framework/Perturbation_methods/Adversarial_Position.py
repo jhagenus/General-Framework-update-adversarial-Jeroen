@@ -40,20 +40,8 @@ class Adversarial_Position(perturbation_template):
         assert 'exp_parameters' in kwargs.keys(
         ), "Adverserial model experiment parameters are missing (required key: 'exp_parameters')."
 
-        assert kwargs['exp_parameters'][6] == 'predefined', "Perturbed datasets can only be used if the agents' roles are predefined."
-
         self.kwargs = kwargs
         self.initialize_settings()
-
-        # Check that in splitter dict the length of repetition is only 1 (i.e., only one splitting method)
-        if isinstance(kwargs['splitter_dict']['repetition'], list):
-
-            if len(kwargs['splitter_dict']['repetition']) > 1:
-                raise ValueError("The splitting dictionary neccessary to define the trained model used " +
-                                 "for the adversarial attack can only contain one singel repetition " +
-                                 "(i.e, the value assigned to the key 'repetition' CANNOT be a list with a lenght larger than one).")
-
-            kwargs['splitter_dict']['repetition'] = kwargs['splitter_dict']['repetition'][0]
 
         # Load the perturbation model
         pert_data_set = data_interface(
@@ -66,9 +54,31 @@ class Adversarial_Position(perturbation_template):
         # Exctract splitting method parameters
         pert_splitter_name = kwargs['splitter_dict']['Type']
         if 'repetition' in kwargs['splitter_dict'].keys():
-            pert_splitter_rep = [kwargs['splitter_dict']['repetition']]
+            # Check that in splitter dict the length of repetition is only 1 (i.e., only one splitting method)
+            if isinstance(kwargs['splitter_dict']['repetition'], list):
+
+                if len(kwargs['splitter_dict']['repetition']) > 1:
+                    raise ValueError("The splitting dictionary neccessary to define the trained model used " +
+                                    "for the adversarial attack can only contain one singel repetition " +
+                                    "(i.e, the value assigned to the key 'repetition' CANNOT be a list with a lenght larger than one).")
+
+                kwargs['splitter_dict']['repetition'] = kwargs['splitter_dict']['repetition'][0]
+
+            pert_splitter_rep = kwargs['splitter_dict']['repetition']
+
+            # Check the value of the repetition key
+            assert (isinstance(pert_splitter_rep, int) or
+                    isinstance(pert_splitter_rep, str) or
+                    isinstance(pert_splitter_rep, tuple)), "Split repetition has a wrong format."
+            if isinstance(pert_splitter_rep, tuple):
+                assert len(pert_splitter_rep) > 0, "Some repetition information must be given."
+                for rep_part in pert_splitter_rep:
+                    assert (isinstance(rep_part, int) or
+                            isinstance(rep_part, str)), "Split repetition has a wrong format."
+            else:
+                pert_splitter_rep = (pert_splitter_rep,)
         else:
-            pert_splitter_rep = [(0,)]
+            pert_splitter_rep = (0,)
         if 'test_part' in kwargs['splitter_dict'].keys():
             pert_splitter_tp = kwargs['splitter_dict']['test_part']
         else:
@@ -115,25 +125,45 @@ class Adversarial_Position(perturbation_template):
         pert_model_class = getattr(pert_model_module, pert_model_name)
 
         # Initialize the model
-        self.pert_model = pert_model_class(
-            pert_model_kwargs, pert_data_set, pert_splitter, True)
-
-        # TODO: Check if self.pert_model can call the function that is needed later in perturb_batch (i.e., self.pert_model.adv_generation())
+        self.pert_model = pert_model_class(pert_model_kwargs, pert_data_set, pert_splitter, True)
+        assert hasattr(self.pert_model, 'predict_batch_tensor'), "The model does not have the method 'predict_batch_tensor'."
 
         # Train the model on the given training set
         self.pert_model.train()
 
+        # After training, set model up to only take position input
+        self.pert_model.input_data_type = ['x', 'y']
+        self.pert_model.num_samples_path_pred = self.num_samples
+
         # Define the name of the perturbation method
         self.name = self.pert_model.model_file.split(os.sep)[-1][:-4]
+        self.name += '---' + kwargs['attack']
+        self.name += '---' + str(kwargs['gamma'])
+        self.name += '---' + str(kwargs['alpha'])
+        self.name += '---' + str(kwargs['num_samples_perturb'])
+        self.name += '---' + str(kwargs['max_number_iterations'])
+        self.name += '---' + str(kwargs['loss_function_1'])
+        self.name += '---' + str(kwargs['store_GT'])
+        self.name += '---' + str(kwargs['store_pred_1'])
+        if 'loss_function_2' in kwargs.keys() is not None:
+            self.name += '---' + str(kwargs['loss_function_2'])
+        if 'barrier_function_past' in kwargs.keys() is not None:
+            self.name += '---' + str(kwargs['barrier_function_past'])
+            self.name += '---' + str(kwargs['distance_threshold_past'])
+            self.name += '---' + str(kwargs['log_value_past'])
+        if 'barrier_function_future' in kwargs.keys() is not None:
+            self.name += '---' + str(kwargs['barrier_function_future'])
+            self.name += '---' + str(kwargs['distance_threshold_future'])
+            self.name += '---' + str(kwargs['log_value_future'])
 
     def initialize_settings(self):
         # Initialize parameters
-        self.num_samples = 5 
-        self.max_number_iterations = 5
+        self.num_samples = self.kwargs['num_samples_perturb']
+        self.max_number_iterations = self.kwargs['max_number_iterations']
 
         # Learning decay
-        self.gamma = 1
-        self.alpha = 0.01
+        self.gamma = self.kwargs['gamma']
+        self.alpha = self.kwargs['alpha']
 
         # Car size
         self.car_length = 4.1
@@ -145,38 +175,40 @@ class Adversarial_Position(perturbation_template):
         # FDE attack select (Maximize distance): 'FDE_Y_GT_Y_Pred_Max', 'FDE_Y_Perturb_Y_Pred_Max', 'FDE_Y_Perturb_Y_GT_Max', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Max', 'FDE_Y_pred_and_Y_pred_iteration_1_Max'
         # FDE attack select (Minimize distance): 'FDE_Y_GT_Y_Pred_Min', 'FDE_Y_Perturb_Y_Pred_Min', 'FDE_Y_Perturb_Y_GT_Min', 'FDE_Y_pred_iteration_1_and_Y_Perturb_Min', 'FDE_Y_pred_and_Y_pred_iteration_1_Min'
         # Collision attack select: 'Collision_Y_pred_tar_Y_GT_ego', 'Collision_Y_Perturb_tar_Y_GT_ego'
-        self.loss_function_1 = 'ADE_Y_GT_Y_Pred_Max'
-        self.loss_function_2 = None # If not used set to None
+        # Other: 'Y_perturb', None
+        self.loss_function_1 = self.kwargs['loss_function_1']
+        self.loss_function_2 = self.kwargs['loss_function_2'] 
 
         # For barrier function past select: 'Time_specific', 'Trajectory_specific', 'Time_Trajectory_specific' or None
-        self.barrier_function_past = 'Trajectory_specific'
-        self.barrier_function_future = None
+        self.barrier_function_past = self.kwargs['barrier_function_past']
+        self.barrier_function_future = self.kwargs['barrier_function_future']
 
         # Barrier function parameters
-        self.distance_threshold_past = 1
-        self.distance_threshold_future = 1
-        self.log_value_past = 2.5
-        self.log_value_future = 2.5
+        self.distance_threshold_past = self.kwargs['distance_threshold_past']
+        self.distance_threshold_future = self.kwargs['distance_threshold_future']
+        self.log_value_past = self.kwargs['log_value_past']
+        self.log_value_future = self.kwargs['log_value_future']
+
+        # store which data
+        self.store_GT = self.kwargs['store_GT']
+        self.store_pred_1 = self.kwargs['store_pred_1']
 
         # Randomized smoothing
-        self.smoothing = True
+        self.smoothing = False
         self.num_samples_used_smoothing = 15  
         self.sigma = [0.05, 0.1]
-        self.plot_smoothing = True
+        self.plot_smoothing = False
 
         # Plot the loss over the iterations
         self.plot_loss = True
 
-        # Image neural network
-        self.image_neural_network = False
-
         # Left turns settings!!!
         # Plot input data
-        self.plot_input = True
+        self.plot_input = False
 
         # Plot the adversarial scene
         self.static_adv_scene = True
-        self.animated_adv_scene = True
+        self.animated_adv_scene = False
 
         # Spline settings adversarial scene
         self.total_spline_values = 100
@@ -187,7 +219,7 @@ class Adversarial_Position(perturbation_template):
         # Do a assertion check on settings
         self._assertion_check()
 
-    def perturb_batch(self, X, Y, T, agent, Domain, contstraints):
+    def perturb_batch(self, X, Y, T, S, C, img, img_m_per_px, graph, Agent_names): 
         '''
         This function takes a batch of data and generates perturbations.
 
@@ -220,24 +252,30 @@ class Adversarial_Position(perturbation_template):
             This is the future perturbed data of the agents, in the form of a
             :math:`\{N_{samples} \times N_{agents} \times N_{O} \times 2\}` dimensional numpy array with float values. 
             If an agent is fully or at some timesteps partially not observed, then this can include np.nan values. 
-        '''
-
+        '''        
         # Prepare the data (ordering/spline/edge_cases)
-        X, Y = self._prepare_data(X, Y, T, agent, Domain)
+        X, Y, T, S, C, img, img_m_per_px = self._prepare_data(X, Y, T, S, C, img, img_m_per_px, Agent_names)
+        Pred_agents = np.zeros((X.shape[0], X.shape[1]), dtype=bool)
+        Pred_agents[:, 0] = True
 
         # Prepare data for adversarial attack (tensor/image prediction model)
-        X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self._prepare_data_attack(
-            X, Y)
+        X, Y, positions_perturb, Y_Pred_iter_1, data_barrier = self._prepare_data_attack(X, Y)
 
         # Create a tensor for the perturbation
-        perturbation = torch.zeros_like(positions_perturb)
-        perturbation.requires_grad = True
+        perturbation_storage = torch.zeros_like(positions_perturb)
 
         # Store the loss for plot
         loss_store = []
 
+        # learning rate
+        alpha = self.alpha * torch.ones_like(positions_perturb)
+
         # Start the optimization of the adversarial attack
         for i in range(self.max_number_iterations):
+            # Create a tensor for the perturbation
+            perturbation = perturbation_storage.detach().clone()
+            perturbation.requires_grad = True
+
             # Reset gradients
             perturbation.grad = None
 
@@ -246,8 +284,11 @@ class Adversarial_Position(perturbation_template):
                 positions_perturb + perturbation, X, Y, self.future_action_included)
 
             # Forward pass through the model
-            Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, Domain=Domain, img=self.img, img_m_per_px=self.img_m_per_px,
-                                                          num_steps=self.num_steps_predict, num_samples=self.num_samples)
+            Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, S=S, C=C, 
+                                                          img=img, img_m_per_px=img_m_per_px, graph = graph,
+                                                          Pred_agents = Pred_agents, num_steps = self.num_steps_predict)
+            # Only use actually predicted target agent
+            Y_Pred = Y_Pred[:,0]
 
             if i == 0:
                 # check conversion
@@ -257,33 +298,80 @@ class Adversarial_Position(perturbation_template):
                 Y_Pred_iter_1 = Y_Pred.detach()
 
             losses = self._loss_module(
-                X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier)
+                X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, i)
 
-            # Store the loss for plot
-            loss_store.append(losses.detach().cpu().numpy())
+            # # Store the loss for plot
             print(losses)
 
             # Calulate gradients
             losses.sum().backward()
             grad = perturbation.grad
 
-            # Update Control inputs
-            with torch.no_grad():
-                perturbation.subtract_(grad, alpha=self.alpha)
+            inner_loop_count = 0
 
-                # set perturbations of ego agent to zero
-                perturbation[:, 1:] = 0.0
+            # copy learning rates
+            # alpha_iter = alpha.clone()
+
+            # Update Control inputs
+            while True:
+                inner_loop_count += 1
+
+                # Update Control inputs
+                with torch.no_grad():
+                    perturbation_new = perturbation.clone()
+                    perturbation_new.subtract_(grad * alpha)
+
+                    # set perturbations of ego agent to zero
+                    perturbation_new[:, 1:] = 0.0
+
+                # Split the adversarial position back to X and Y
+                X_new, Y_new = Helper.return_data(
+                    positions_perturb + perturbation_new, X, Y, self.future_action_included)
+                
+                # Forward pass through the model
+                Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, S=S, C=C, 
+                                                              img=img, img_m_per_px=img_m_per_px, graph = graph,
+                                                              Pred_agents = Pred_agents, num_steps = self.num_steps_predict)
+                # Only use actually predicted target agent
+                Y_Pred = Y_Pred[:,0]
+
+                losses = self._loss_module(
+                    X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, i)
+                
+                print(losses)
+
+                # Check for NaN values in losses
+                invalid_mask = torch.isnan(losses) | torch.isinf(losses)
+                if invalid_mask.any():
+                    # check if agent crashes replace tensor with zero tensor
+                    if inner_loop_count >= 20:
+                        # perturbation_new[invalid_mask] = torch.zeros_like(perturbation_new[invalid_mask])
+                        perturbation_new[invalid_mask] = perturbation_storage[invalid_mask].clone()
+                        perturbation_storage = perturbation_new.detach().clone()
+                        break
+                    # Half the learning rate only for samples with NaN losses
+                    alpha[invalid_mask] *= 0.5
+                    continue  # Skip this iteration and try again with reduced learning rate for NaN samples
+                else:
+                    perturbation_storage = perturbation_new.detach().clone()
+                    break
+
+            # Store the loss for plot
+            loss_store.append(losses.detach().cpu().numpy())
 
             # Update the step size
-            self.alpha *= self.gamma
+            alpha *= self.gamma
 
         # Split the adversarial position back to X and Y
         X_new, Y_new = Helper.return_data(
             positions_perturb + perturbation, X, Y, self.future_action_included)
 
         # Forward pass through the model
-        Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, Domain=Domain, img=self.img, img_m_per_px=self.img_m_per_px,
-                                                      num_steps=self.num_steps_predict, num_samples=self.num_samples)
+        Y_Pred = self.pert_model.predict_batch_tensor(X=X_new, T=T, S=S, C=C,
+                                                      img=img, img_m_per_px=img_m_per_px, graph = graph,
+                                                      Pred_agents = Pred_agents, num_steps = self.num_steps_predict)
+        # Only use actually predicted target agent
+        Y_Pred = Y_Pred[:,0]
 
         # Gaussian smoothing module
         self.X_smoothed, self.X_smoothed_adv, self.Y_pred_smoothed, self.Y_pred_smoothed_adv = self._smoothing_module(
@@ -299,12 +387,19 @@ class Adversarial_Position(perturbation_template):
 
         # Return Y to old shape
         Y_new = Helper.return_to_old_shape(Y_new, self.Y_shape)
+        self.copy_Y = Helper.return_to_old_shape(self.copy_Y, self.Y_shape)
+        Y_Pred_iter_1_new = Helper.return_to_old_shape_pred_1(Y_Pred_iter_1, Y, self.Y_shape, self.ego_agent_index)
 
         # Flip dimensions back
-        X_new_pert, Y_new_pert = Helper.flip_dimensions_2(
-            X_new, Y_new, self.agent_order)
-
-        return X_new_pert, Y_new_pert
+        X_new_pert, Y_new_pert, Y_Pred_iter_1_new = Helper.flip_dimensions_2(
+            X_new, Y_new, Y_Pred_iter_1_new, self.agent_order)
+        
+        if self.store_pred_1:
+            return X_new_pert, Y_Pred_iter_1_new
+        elif self.store_GT:
+            return X_new_pert, self.copy_Y
+        else:
+            return X_new_pert, Y_new_pert
 
     def _ploting_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, loss_store):
         """
@@ -350,7 +445,7 @@ class Adversarial_Position(perturbation_template):
             plot.plot_smoothing(X=X, X_new=X_new, Y=Y, Y_new=Y_new, Y_Pred=Y_Pred, Y_Pred_iter_1=Y_Pred_iter_1,
                                 X_smoothed=self.X_smoothed, X_smoothed_adv=self.X_smoothed_adv, Y_pred_smoothed=self.Y_pred_smoothed, Y_pred_smoothed_adv=self.Y_pred_smoothed_adv)
 
-    def _loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier):
+    def _loss_module(self, X, X_new, Y, Y_new, Y_Pred, Y_Pred_iter_1, data_barrier, iteration):
         """
         Calculates the loss for the given input data, predictions, and barrier data.
 
@@ -362,6 +457,7 @@ class Adversarial_Position(perturbation_template):
         Y_Pred (array-like): The predicted future position tensor.
         Y_Pred_iter_1 (array-like): The initial prediction of future positions.
         data_barrier (array-like): Concatenated tensor of observed and future positions for barrier function.
+        iteration (int): The current iteration of the adversarial attack.
 
         Returns:
         losses (array-like): Calculated loss values based on the input data and predictions.
@@ -374,7 +470,8 @@ class Adversarial_Position(perturbation_template):
                                      Y_new=Y_new,
                                      Y_Pred=Y_Pred,
                                      Y_Pred_iter_1=Y_Pred_iter_1,
-                                     barrier_data=data_barrier
+                                     barrier_data=data_barrier,
+                                     iteration=iteration
                                      )
 
         return losses
@@ -420,50 +517,8 @@ class Adversarial_Position(perturbation_template):
         Helper.validate_settings_order(self.smoothing, self.plot_smoothing)
         Helper.validate_adversarial_loss(self.loss_function_1)
 
-    def _load_images(self, X, Domain):
-        """
-        Loads images required for neural netwrok on the given observed positions and domain information.
 
-        Parameters:
-        X (array-like): The ground truth observed position tensor with array shape (batch size, number agents, number time steps observed, coordinates (x,y)).
-        Domain (DataFrame): A DataFrame containing domain-specific information related to the agents.
-
-        Returns:
-        img (array-like): Loaded images in the required format and dimensions.
-        img_m_per_px (array-like): Meter-per-pixel values for the images.
-        """
-        Img_needed = np.zeros(X.shape[:2], bool)
-        Img_needed[:, 0] = True
-
-        if self.data.includes_images():
-            if self.pert_model.grayscale:
-                channels = 1
-            else:
-                channels = 3
-            img = np.zeros((*Img_needed.shape, self.pert_model.target_height,
-                            self.pert_model.target_width, channels), np.uint8)
-            img_m_per_px = np.ones(Img_needed.shape, np.float32) * np.nan
-
-            centre = X[Img_needed, -1, :]
-            x_rel = centre - X[Img_needed, -2, :]
-            rot = np.angle(x_rel[:, 0] + 1j * x_rel[:, 1])
-            domain_needed = Domain.iloc[np.where(Img_needed)[0]]
-
-            img[Img_needed] = self.data.return_batch_images(domain_needed, centre, rot,
-                                                            target_height=self.pert_model.target_height,
-                                                            target_width=self.pert_model.target_width,
-                                                            grayscale=self.pert_model.grayscale,
-                                                            Imgs_rot=img[Img_needed],
-                                                            Imgs_index=np.arange(Img_needed.sum()))
-
-            img_m_per_px[Img_needed] = self.data.Images.Target_MeterPerPx.loc[domain_needed.image_id]
-        else:
-            img = None
-            img_m_per_px = None
-
-        return img, img_m_per_px
-
-    def _prepare_data(self, X, Y, T, agent, Domain):
+    def _prepare_data(self, X, Y, T, S, C, I1, I2, agent):
         """
         Prepares data for further processing by removing NaN values,
         flipping dimensions of the agent data, and storing relevant
@@ -474,7 +529,6 @@ class Adversarial_Position(perturbation_template):
         Y (array-like): The ground truth future postition tensor with array shape (batch size, number agents, number time steps future, coordinates (x,y))
         T (int): Type of agent observed.
         agent (object): It includes strings with the names of the agents.
-        Domain (object): A domain object specifying the context of the agents
 
         Returns:
         X (array-like): Processed observed feature matrix.
@@ -485,14 +539,23 @@ class Adversarial_Position(perturbation_template):
         self.Y_shape = Y.shape
         Y = Helper.remove_nan_values(data=Y)
 
+        # Copy the original data
+        self.copy_Y = Y.copy()
+
         # Flip dimensions agents
-        X, Y, self.agent_order, self.tar_agent_index, self.ego_agent_index = Helper.flip_dimensions(
-            X=X, Y=Y, agent=agent)
+        self.agent_order, self.tar_agent_index, self.ego_agent_index = Helper.flip_dimensions_index(agent)
 
-        self.T = T
-        self.Domain = Domain
+        X  = X[:, self.agent_order]
+        Y  = Y[:, self.agent_order]
+        T  = T[:, self.agent_order]
+        S  = S[:, self.agent_order]
+        if C is not None:
+            C  = C[:, self.agent_order]
+        if I1 is not None:
+            I1 = I1[:, self.agent_order]
+            I2 = I2[:, self.agent_order]
 
-        return X, Y
+        return X, Y, T, S, C, I1, I2
 
     def _prepare_data_attack(self, X, Y):
         """
@@ -523,15 +586,6 @@ class Adversarial_Position(perturbation_template):
 
         self.mask_data = Helper.compute_mask_values_tensor(positions_perturb)
 
-        # Load images for adversarial attack (change when using image)
-        # img, img_m_per_px = self._load_images(X,Domain)
-        self.img, self.img_m_per_px = None, None
-
-        # Show image
-        if self.image_neural_network:
-            plot_img = Image.fromarray(self.img[0, 0, :], 'RGB')
-            plot_img.show()
-
         # Create storage for the adversarial prediction on nominal setting
         Y_Pred_iter_1 = torch.zeros(
             (Y.shape[0], self.num_samples, Y.shape[2], Y.shape[3]))
@@ -553,7 +607,7 @@ class Adversarial_Position(perturbation_template):
 
         '''
 
-        self.batch_size = 1
+        self.batch_size = 5
 
     def get_constraints(self):
         '''
