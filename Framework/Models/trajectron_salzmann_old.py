@@ -774,10 +774,6 @@ class trajectron_salzmann_old(model_template):
         self.trajectron.model_registrar.to(self.trajectron.device)
     
         S, S_St, first_h, Neighbor, Neighbor_edge, img, node_type, center_pos, rot_angle = self.extract_data_batch_tensor(X, T, None, img, num_steps)
-        
-        # Move img to device
-        if img is not None:
-            img = img.to(self.trajectron.device)
             
         torch.cuda.empty_cache()
         # Run prediction pass
@@ -785,9 +781,9 @@ class trajectron_salzmann_old(model_template):
         self.trajectron.model_registrar.to(self.trajectron.device)
         
         
-        predictions = model.predict(inputs                = S[:,0].to(self.trajectron.device),
-                                    inputs_st             = S_St[:,0].to(self.trajectron.device),
-                                    first_history_indices = first_h.to(self.trajectron.device),
+        predictions = model.predict(inputs                = S[:,0],
+                                    inputs_st             = S_St[:,0],
+                                    first_history_indices = first_h,
                                     neighbors             = Neighbor,
                                     neighbors_edge_value  = Neighbor_edge,
                                     robot                 = None,
