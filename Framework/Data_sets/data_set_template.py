@@ -3251,9 +3251,6 @@ class data_set_template():
                     # Set Output_T_E from dataframe to corresponding value
                     self.Output_T_E = np.stack(Output_T_E.to_numpy()[Output_A.to_numpy().astype(bool)], 0).mean(1)
                     assert np.isfinite(self.Output_T_E).all(), "Behavior time extraction of perturbed data failed."
-                
-                # Remove unperturbed columns from domain
-                self.Domain = self.Domain.drop(columns = ['Unperturbed_input', 'Unperturbed_output'], errors = 'ignore')
             
             save_data = np.array([
                                     self.Input_prediction,

@@ -159,6 +159,9 @@ class perturbation_template():
         num_batches = int(np.ceil(X.shape[0] / self.batch_size))
         for i_batch in range(num_batches):
             print(f'Perturbing batch {i_batch + 1}/{num_batches}', flush = True)
+
+            if i_batch + 1 < 46:
+                continue
             i_start = i_batch * self.batch_size
             i_end = min((i_batch + 1) * self.batch_size, X.shape[0])
 

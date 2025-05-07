@@ -641,7 +641,7 @@ class evaluation_template():
             return Path_true, Path_pred, Pred_step
         
     
-    def get_true_past_paths(self, return_types = False):
+    def get_true_past_paths(self, return_unperturbed = False, return_types = False):
 
         '''
         This returns the true and predicted trajectories.
@@ -664,6 +664,12 @@ class evaluation_template():
             :math:`\{N_{samples} \times N_{agents} \times N_{I} \times 2\}` dimensional numpy 
             array with float values. If an agent is fully or or some timesteps partially not observed, 
             then this can include np.nan values.
+        Path_true_unperturbed : np.ndarray, optional
+            This is the true observed trajectory of the agents of the original, unperturbed datasets, 
+            in the form of a :math:`\{N_{samples} \times N_{agents} \times N_{I} \times 2\}` dimensional 
+            numpy array with float values. If an agent is fully or or some timesteps partially not 
+            observed, then this can include np.nan values. If the dataset is not perturbed, this is
+            identical to Path_true. It is only returned if **return_unperturbed** is *True*.
         Pred_agents : np.ndarray
             This is a :math:`\{N_{samples} \times N_{agents}\}` dimensional numpy array with 
             boolean values. It indicates for each agent if it is a considered pred agent.
@@ -693,15 +699,54 @@ class evaluation_template():
         Path_true = Path_true[Use_samples]
         Pred_agent = Pred_agent[Use_samples]
 
+        if return_unperturbed:
+            Domain = self.data_set.Domain.iloc[self.Index_curr[Use_samples]]
+            Pred_agent_id = self.model.Pred_agent_id[Use_samples]
+            Path_true_unperturbed = Path_true.copy()
+            # Check if Unperturbed_input column is in Domain
+            if 'Unperturbed_input' in Domain.columns:
+                Input_path = Domain['Unperturbed_input']
+
+                # Find rows where input_path is not nan or None
+                useful = Input_path.notna() & Input_path.notnull() & (Input_path != None)
+                useful_ind = np.where(useful)[0]
+                Input_path = Input_path[useful].to_list()
+                # This is now a list of pandas series
+                Input_path = pd.concat(Input_path, axis = 0)
+
+                # Get corresponding Pred agent_id
+                Pred_agent_id = Pred_agent_id[useful_ind]
+
+                # get corresponding agent_name
+                Pred_agent_name = np.array(self.data_set.Agents)[Pred_agent_id] 
+
+                for i, i_sample in enumerate(np.where(useful_ind)[0]):
+                    # Get the corresponding agent name
+                    agent_names = Pred_agent_name[i]
+                    # Get the corresponding path
+                    path = Input_path.iloc[i] # pandas series
+
+                    # Go through agents
+                    for i_agent, agent_name in enumerate(agent_names):
+                        assert agent_name in path.index, f'Agent {agent_name} not in path {path.index}'
+                        # Get the path
+                        path_agent = path[agent_name]
+
+                        # Assign the path
+                        Path_true_unperturbed[i_sample, i_agent] = path_agent
+            Paths_true = [Path_true, Path_true_unperturbed]
+        else:
+            Paths_true = [Path_true]
+
         if return_types:
             Types = self.model.T_pred
             Types = Types[Use_samples]
 
             Sizes = self.model.S_pred
             Sizes = Sizes[Use_samples]
-            return Path_true, Pred_agent, Types, Sizes
+            return *Paths_true, Pred_agent, Types, Sizes
         else:
-            return Path_true, Pred_agent
+            return *Paths_true, Pred_agent
     
     def get_other_agents_paths(self, return_types = False):
         '''
