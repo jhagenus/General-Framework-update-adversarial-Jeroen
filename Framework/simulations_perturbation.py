@@ -64,7 +64,7 @@ for attack in ['Adversarial_Control_Action', 'Adversarial_Position', 'Adversaria
 Splitters = [{'Type': 'no_split', 'repetition': 0, 'train_pert': False, 'test_pert': True}]
 
 # Select the metrics to be used
-Metrics = ['ADE20_indep', 'FDE20_indep', 'Collision_rate_indep']
+Metrics = ['ADE20_indep', 'FDE20_indep', 'Collision_rate_indep', 'Past_Acceleration_indep', 'Past_Curvature_indep']
 
 
 new_experiment.set_modules(Data_sets, Data_params, Splitters, Models, Metrics)

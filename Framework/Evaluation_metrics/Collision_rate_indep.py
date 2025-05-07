@@ -67,7 +67,7 @@ class Collision_rate_indep(evaluation_template):
         return [Collision_rate]
         
     def get_output_type(self = None):
-        return 'path_all_wi_pov'
+        return 'path_all_wo_pov'
     
     def get_opt_goal(self = None):
         return 'minimize'
@@ -94,3 +94,6 @@ class Collision_rate_indep(evaluation_template):
     
     def metric_boundaries(self = None):
         return [0.0, 1.0]
+    
+    def partial_calculation(self = None):
+        return 'Pred_agents' 

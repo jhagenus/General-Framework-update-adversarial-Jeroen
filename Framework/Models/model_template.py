@@ -3288,12 +3288,17 @@ class model_template():
                                         exclude_ego = False, exclude_late_timesteps = True, get_for_pred_agents = False):
         if hasattr(self, 'Path_pred') and hasattr(self, 'Path_true') and hasattr(self, 'Pred_step'):
             if self.excluded_ego == exclude_ego:
-                if np.array_equal(self.extracted_pred_index, Pred_index):
-                    return
+                if self.exclude_last_timesteps == exclude_late_timesteps:
+                    if self.get_for_pred_agents == get_for_pred_agents:
+                        if np.array_equal(self.extracted_pred_index, Pred_index):
+                            return
         
         # Save last setting 
         self.excluded_ego = exclude_ego
+        self.exclude_last_timesteps = exclude_late_timesteps
+        self.get_for_pred_agents = get_for_pred_agents
         self.extracted_pred_index = Pred_index
+
 
         # Get the file index
         if not self.data_set.data_in_one_piece:
@@ -3339,8 +3344,10 @@ class model_template():
         
         # Get true predictions
         self.Path_true = np.full((*i_sampl_sort.shape, nto_max, 2), np.nan, np.float32)
+        self.Path_true_past = np.full((*i_sampl_sort.shape, self.num_timesteps_in, 2), np.nan, np.float32)
         data_index, data_mask = self.get_orig_data_index(Pred_index_data[i_sampl_sort], i_agent_sort)
         self.Path_true[data_mask] = self.data_set.Y_orig[data_index, :nto_max, :2]
+        self.Path_true_past[data_mask] = self.data_set.X_orig[data_index, :, :2]
 
         # Get predicted timesteps
         self.Pred_step = Nto_i[:,np.newaxis] > np.arange(nto_max)[np.newaxis]
@@ -3350,6 +3357,7 @@ class model_template():
         # Remove nan values
         self.Path_true[~self.Pred_step] = 0.0
         self.Path_true = self.Path_true[:,np.newaxis]
+        self.Path_true_past[~self.Pred_step] = 0.0
         
         # Get predicted trajectories
         self.Path_pred = np.zeros((self.num_samples_path_pred, num_samples,

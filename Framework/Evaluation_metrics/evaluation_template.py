@@ -591,7 +591,7 @@ class evaluation_template():
             for available types). If an agent is not observed at all, the value will instead be '0'.
             It is only returned if **return_types** is *True*.
         Sizes : np.ndarray, optional
-            This is a :math:`\{N_S \times N_{A_other} \times 2\}` dimensional numpy array. It is the sizes of the agents,
+            This is a :math:`\{N_{samples} \times N_{A_other} \times 2\}` dimensional numpy array. It is the sizes of the agents,
             where the first column (S[:,:,0]) includes the lengths of the agents (longitudinal size) and the second column
             (S[:,:,1]) includes the widths of the agents (lateral size). If an agent is not observed at all, the values 
             will instead be np.nan.
@@ -641,6 +641,68 @@ class evaluation_template():
             return Path_true, Path_pred, Pred_step
         
     
+    def get_true_past_paths(self, return_types = False):
+
+        '''
+        This returns the true and predicted trajectories.
+
+        Parameters
+        ----------
+        num_preds : int, optional
+            The number :math:`N_{preds}` of different predictions used. The default is None,
+            in which case all available predictions are used.
+        return_types : bool, optional
+            Decides if agent types are returned as well. The default is False.
+        exclude_late_timesteps : bool, optional
+            Decides if predicted timesteps after the set prediction horizon should be excluded. 
+            The default is True.
+
+        Returns
+        -------
+        Path_true : np.ndarray
+            This is the true observed trajectory of the agents, in the form of a
+            :math:`\{N_{samples} \times N_{agents} \times N_{I} \times 2\}` dimensional numpy 
+            array with float values. If an agent is fully or or some timesteps partially not observed, 
+            then this can include np.nan values.
+        Pred_agents : np.ndarray
+            This is a :math:`\{N_{samples} \times N_{agents}\}` dimensional numpy array with 
+            boolean values. It indicates for each agent if it is a considered pred agent.
+        Types : np.ndarray, optional
+            This is a :math:`\{N_{samples} \times N_{agents}\}` dimensional numpy array. It includes strings 
+            that indicate the type of agent observed (see definition of **provide_all_included_agent_types()** 
+            for available types). If an agent is not observed at all, the value will instead be '0'.
+            It is only returned if **return_types** is *True*.
+        Sizes : np.ndarray, optional
+            This is a :math:`\{N_{samples} \times N_{A_other} \times 2\}` dimensional numpy array. It is the sizes of the agents,
+            where the first column (S[:,:,0]) includes the lengths of the agents (longitudinal size) and the second column
+            (S[:,:,1]) includes the widths of the agents (lateral size). If an agent is not observed at all, the values 
+            will instead be np.nan.
+            It is only returned if **return_types** is *True*.
+
+        '''
+        self.model._transform_predictions_to_numpy(self.Index_curr, self.Output_path_pred,
+                                                   self.get_output_type() == 'path_all_wo_pov')
+        Path_true = self.model.Path_true_past
+
+        # Get used samples
+        Pred_step = self.model.Pred_step
+        Pred_agent = Pred_step.any(-1)
+        Use_samples = Pred_agent.any(-1)
+
+        # Get the true past paths
+        Path_true = Path_true[Use_samples]
+        Pred_agent = Pred_agent[Use_samples]
+
+        if return_types:
+            Types = self.model.T_pred
+            Types = Types[Use_samples]
+
+            Sizes = self.model.S_pred
+            Sizes = Sizes[Use_samples]
+            return Path_true, Pred_agent, Types, Sizes
+        else:
+            return Path_true, Pred_agent
+    
     def get_other_agents_paths(self, return_types = False):
         '''
         This returns the true observed trajectories of all agents that are not the
@@ -664,7 +726,7 @@ class evaluation_template():
             for available types). If an agent is not observed at all, the value will instead be '0'.
             It is only returned if **return_types** is *True*.
         Sizes : np.ndarray, optional
-            This is a :math:`\{N_S \times N_{A_other} \times 2\}` dimensional numpy array. It is the sizes of the agents,
+            This is a :math:`\{N_{samples} \times N_{A_other} \times 2\}` dimensional numpy array. It is the sizes of the agents,
             where the first column (S[:,:,0]) includes the lengths of the agents (longitudinal size) and the second column
             (S[:,:,1]) includes the widths of the agents (lateral size). If an agent is not observed at all, the values 
             will instead be np.nan.
