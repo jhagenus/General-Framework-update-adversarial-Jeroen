@@ -21,7 +21,7 @@ class Past_Curvature_indep(evaluation_template):
 
         # Get second order derivatives
         heading_diff = headings[:, 1:] - headings[:, :-1] # N x n_I-2
-        heading_diff = np.mod(heading_diff + np.pi, 2 * np.pi) - np.pi # N x n_I-2
+        heading_diff = np.mod(heading_diff + 0.5 * np.pi, np.pi) - 0.5 * np.pi # N x n_I-2
         yaw_rate = heading_diff / dt # N x n_I-2
 
         abs_curvature = np.abs(yaw_rate) / (np.abs(V[:, :-1]) + 1e-4) # N x n_I-2
@@ -30,7 +30,7 @@ class Past_Curvature_indep(evaluation_template):
         Error = abs_curvature.mean()
 
         # Adjust for assumption of there being 1 zero acceleration timestep at teh beginning
-        Error *= abs_acceleration.shape[1] / (abs_acceleration.shape[1] + 1)
+        Error *= abs_curvature.shape[1] / (abs_curvature.shape[1] + 1)
 
         return [Error]
     

@@ -78,7 +78,7 @@ agents_to_predict = 'predefined'
 overwrite_results = 'no'
 
 # Determine if the model should be evaluated on the training set as well
-evaluate_on_train_set = True
+evaluate_on_train_set = False
 
 # Determine if predictions should be saved
 save_predictions = True

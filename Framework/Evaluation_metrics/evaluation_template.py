@@ -362,8 +362,8 @@ class evaluation_template():
                 
                 # Get the maximum start and minimum end values
                 Positive_start = Positive_start.max(-1) # Shape (N_case_4)
-                Positive_end = Positive_end.max(-1) # Shape (N_case_4)
-                Negative_start = Negative_start.min(-1) # Shape (N_case_4)
+                Positive_end = Positive_end.min(-1) # Shape (N_case_4)
+                Negative_start = Negative_start.max(-1) # Shape (N_case_4)
                 Negative_end = Negative_end.min(-1) # Shape (N_case_4)
                 
                 # The no overlap is if positive_start < positive_end or negative_start < negative_end
@@ -371,7 +371,7 @@ class evaluation_template():
                 Negative_no_overlap = Negative_start < Negative_end # Shape (N_case_4)
                 
                 # Both conditions should be impossible
-                assert (Positive_no_overlap & Negative_no_overlap).any(), 'There is a bug in the code'
+                assert not (Positive_no_overlap & Negative_no_overlap).any(), 'There is a bug in the code'
                 
                 # Get the interval where there is no overlap
                 No_overlap_start = np.ones_like(Positive_start, float) # Shape (N_case_4)
@@ -389,6 +389,9 @@ class evaluation_template():
                 # Define the right overlap interval
                 Overlap_start_2[case_4] = No_overlap_end 
             
+            assert (Overlap_start <= Overlap_end).all(), 'There is a bug in the code'
+            assert (Overlap_start_2 <= Overlap_end_2).all(), 'There is a bug in the code'
+
             # Check if second intervals exist
             Two_intervals = (Overlap_start_2 < 1.0).any(-1) # Shape (N)
             One_interval = ~Two_intervals # Shape (N)
@@ -710,21 +713,18 @@ class evaluation_template():
                 # Find rows where input_path is not nan or None
                 useful = Input_path.notna() & Input_path.notnull() & (Input_path != None)
                 useful_ind = np.where(useful)[0]
-                Input_path = Input_path[useful].to_list()
-                # This is now a list of pandas series
-                Input_path = pd.concat(Input_path, axis = 0)
-
+                Input_path = Input_path[useful]
                 # Get corresponding Pred agent_id
                 Pred_agent_id = Pred_agent_id[useful_ind]
 
                 # get corresponding agent_name
                 Pred_agent_name = np.array(self.data_set.Agents)[Pred_agent_id] 
 
-                for i, i_sample in enumerate(np.where(useful_ind)[0]):
+                for i, i_sample in enumerate(useful_ind):
                     # Get the corresponding agent name
                     agent_names = Pred_agent_name[i]
                     # Get the corresponding path
-                    path = Input_path.iloc[i] # pandas series
+                    path = Input_path.iloc[i][0] # pandas series
 
                     # Go through agents
                     for i_agent, agent_name in enumerate(agent_names):
