@@ -25,6 +25,7 @@ class Past_Curvature_indep(evaluation_template):
         yaw_rate = heading_diff / dt # N x n_I-2
 
         abs_curvature = np.abs(yaw_rate) / (np.abs(V[:, :-1]) + 1e-4) # N x n_I-2
+        abs_curvature[np.abs(V[:, :-1]) < 0.1] = 0.0 # N x n_I-2
 
         # Get mean over timesteps
         Error = abs_curvature.mean()
