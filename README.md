@@ -1,4 +1,4 @@
-# A general framework for benchmarking human behavior prediction methods in traffic
+# Realistic Adversarial Attacks for Robustness Evaluation of Trajectory Prediction Models via Future State Perturbation
 This is the used framework for generating the Adversarial attacks in the paper **Put paper reference here**. 
 
 This is a clone of [STEP](https://github.com/DAI-Lab-HERALD/General-Framework/tree/main), a general framework for evaluating prediction models (including on perturbed data). Consequently, users who want to use our work should go there for a larger collection of models, datasets, and metrics.
