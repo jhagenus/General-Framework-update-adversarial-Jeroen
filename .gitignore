@@ -44,6 +44,12 @@ rndSeed*
 *.so
 *.m
 
+# Perturbation results
+*--Pertubation_*
+*Metrics*
+*Predictions*
+*subgroups*
+
 # ignore visualization tools
 !header.tex
 *.aux
